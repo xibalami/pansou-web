@@ -1,0 +1,26 @@
+{
+  "name": "pansou-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^4.5.1",
+    "axios": "^1.10.0",
+    "vite": "^4.5.1",
+    "vue": "^3.5.17"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.14",
+    "@vue/tsconfig": "^0.7.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.8.3",
+    "vite-plugin-vue-devtools": "^7.7.7"
+  }
+}
