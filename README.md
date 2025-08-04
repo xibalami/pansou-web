@@ -253,27 +253,124 @@ interface SearchResponse {
 
 ## 📦 部署
 
-### 单独部署
+### 🐳 Docker 一体化部署（推荐）
+
+项目已集成 GitHub Actions，可自动构建包含前后端的统一 Docker 镜像。
+
+#### 快速启动
+
+```bash
+# 使用最新镜像
+docker run -d \
+  --name pansou-app \
+  -p 80:80 \
+  -v pansou-data:/app/data \
+  ghcr.io/fish2018/pansou-web:main
+
+# 访问应用
+open http://localhost
+```
+
+#### 环境变量配置
+
+```bash
+docker run -d \
+  --name pansou-app \
+  -p 80:80 \
+  -e DOMAIN=yourdomain.com \
+  -e PANSOU_PORT=8888 \
+  -e PANSOU_HOST=127.0.0.1 \
+  -v pansou-data:/app/data \
+  -v /path/to/ssl:/app/data/ssl \
+  ghcr.io/fish2018/pansou-web:main
+```
+
+#### Docker Compose 部署
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  pansou:
+    image: ghcr.io/fish2018/pansou-web:main
+    container_name: pansou-app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=yourdomain.com
+      - PANSOU_PORT=8888
+      - PANSOU_HOST=127.0.0.1
+    volumes:
+      - pansou-data:/app/data
+      - pansou-logs:/app/logs
+      - ./ssl:/app/data/ssl  # SSL证书目录（可选）
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  pansou-data:
+  pansou-logs:
+```
+
+#### 镜像构建流程
+
+GitHub Actions 自动化流程：
+
+1. **拉取源码**：同时拉取前端（pansou-web）和后端（pansou）仓库
+2. **构建前端**：`npm ci && npm run build`
+3. **构建后端**：`go build -o pansou .`
+4. **Docker 构建**：将前端静态文件 + 后端二进制 + Nginx 打包成镜像
+5. **推送镜像**：自动推送到 GitHub Container Registry
+
+#### 版本标签说明
+
+- `main` - 主分支最新版本
+- `develop` - 开发分支版本
+- `v1.0.0` - 语义化版本标签
+- `sha-abc123` - 基于 commit hash 的版本
+
+### 📁 单独部署
+
+如需独立部署前端：
 
 1. 构建项目：`npm run build`
 2. 部署 `dist/` 目录到静态服务器
 3. 配置服务器代理 `/api` 到 PanSou 后端
 
-### Docker 集成部署
+### 🏗️ 自定义构建
 
-配合 PanSou 后端的 Docker 镜像：
+本地构建 Docker 镜像：
 
-```dockerfile
+```bash
+# 克隆项目
+git clone https://github.com/fish2018/pansou-web.git
+cd pansou-web
+
+# 克隆后端项目
+git clone https://github.com/fish2018/pansou.git backend
+
 # 构建前端
-COPY pansou-web/dist /app/frontend/dist/
+npm install && npm run build
 
-# Nginx 配置
-location /api/ {
-  proxy_pass http://127.0.0.1:8888/api/;
-}
+# 构建后端
+cd backend && go build -o pansou . && cd ..
 
-location / {
-  root /app/frontend/dist;
-  try_files $uri $uri/ /index.html;
-}
+# 准备构建上下文
+mkdir -p build-context
+cp -r dist build-context/frontend-dist
+cp backend/pansou build-context/
+cp Dockerfile start.sh build-context/
+
+# 构建镜像
+docker build -t pansou-web:local build-context/
+
+# 运行容器
+docker run -d -p 80:80 --name pansou-local pansou-web:local
 ```
