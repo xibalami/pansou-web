@@ -8,21 +8,24 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # 域名配置
+      # 基础配置
       - DOMAIN=localhost
-      # 后端服务配置
       - PANSOU_PORT=8888
       - PANSOU_HOST=127.0.0.1
-      # 可选环境变量（PanSou后端支持的环境变量）
+      
+      # Telegram频道配置（镜像已包含这些默认频道，如需自定义可取消注释）
+      # - CHANNELS=tgsearchers2,yunpanxunlei,tianyifc,BaiduCloudDisk,txtyzy,peccxinpd,gotopan,xingqiump4,yunpanqk,PanjClub,kkxlzy,baicaoZY,MCPH01,share_aliyun,bdwpzhpd,ysxb48,jdjdn1111,yggpan,MCPH086,zaihuayun,Q66Share,NewAliPan,ypquark,Oscar_4Kmovies,ucwpzy,alyp_TV,alyp_4K_Movies,shareAliyun,alyp_1,dianyingshare,Quark_Movies,XiangxiuNBB,NewQuark,ydypzyfx,kuakeyun,ucquark,xx123pan,yingshifenxiang123,zyfb123,tyypzhpd,tianyirigeng,cloudtianyi,hdhhd21,Lsp115,oneonefivewpfx,Maidanglaocom,qixingzhenren,taoxgzy,tgsearchers115,Channel_Shares_115,tyysypzypd,vip115hot,wp123zy,yunpan139,yunpan189,yunpanuc,yydf_hzl,alyp_Animation,alyp_JLP,leoziyuan
+      
+      # 代理配置（可选）
+      # - SOCKS5_PROXY=socks5://127.0.0.1:1080
+      # - HTTP_PROXY=http://proxy:8080
+      # - HTTPS_PROXY=https://proxy:8080
+      
+      # 性能配置（镜像已包含默认值，如需调整可取消注释）
       # - CACHE_ENABLED=true
       # - CACHE_TTL=3600
-      # - CACHE_MAX_SIZE=1000
-      # - PLUGIN_TIMEOUT=30
-      # - ASYNC_RESPONSE_TIMEOUT=60
       # - MAX_CONCURRENCY=200
       # - MAX_PAGES=30
-      # - TG_BOT_TOKEN=your_bot_token
-      # - SOCKS5_PROXY=socks5://proxy:1080
     volumes:
       # 数据持久化
       - pansou-data:/app/data
