@@ -8,34 +8,35 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   
   return {
-  plugins: [
-    vue({
-      template: {
-        compilerOptions: {
-          // 启用运行时编译
-          isCustomElement: () => false
+    plugins: [
+      vue({
+        template: {
+          compilerOptions: {
+            // 启用运行时编译
+            isCustomElement: () => false
+          }
         }
+      }),
+    ],
+    define: {
+      // Vue 3 feature flags
+      __VUE_OPTIONS_API__: true,
+      __VUE_PROD_DEVTOOLS__: false,
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
+    },
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
+        // 使用包含编译器的Vue版本
+        'vue': 'vue/dist/vue.esm-bundler.js'
       }
-    }),
-  ],
-  define: {
-    // Vue 3 feature flags
-    __VUE_OPTIONS_API__: true,
-    __VUE_PROD_DEVTOOLS__: false,
-    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
-  },
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      // 使用包含编译器的Vue版本
-      'vue': 'vue/dist/vue.esm-bundler.js'
-    }
-  },
-  server: {
-    proxy: {
-      '/api': {
-        target: env.VITE_API_BASE_URL || 'http://localhost:8888',
-        changeOrigin: true
+    },
+    server: {
+      proxy: {
+        '/api': {
+          target: env.VITE_API_BASE_URL || 'http://localhost:8888',
+          changeOrigin: true
+        }
       }
     }
   }
