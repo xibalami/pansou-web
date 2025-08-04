@@ -182,6 +182,23 @@
             </div>
           </div>
         </div>
+
+        <!-- 响应字段说明 -->
+        <div class="response-fields">
+          <h3 class="section-title">📊 响应字段</h3>
+          <div class="params-table response-table">
+            <div class="param-header response-header">
+              <span>字段名</span>
+              <span>类型</span>
+              <span>描述</span>
+            </div>
+            <div class="param-row response-row" v-for="field in searchResponseFields" :key="field.name">
+              <span class="param-name">{{ field.name }}</span>
+              <span class="param-type">{{ field.type }}</span>
+              <span class="param-desc">{{ field.description }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -365,6 +382,29 @@ const searchParams = [
   { name: 'plugins', type: 'string[]', required: false, description: '指定搜索的插件列表' },
   { name: 'cloud_types', type: 'string[]', required: false, description: '指定返回的网盘类型列表' },
   { name: 'ext', type: 'object', required: false, description: '扩展参数，传递给插件的自定义参数' }
+];
+
+// 搜索API响应字段
+const searchResponseFields = [
+  { name: 'total', type: 'number', description: '搜索结果总数' },
+  { name: 'results', type: 'object[]', description: '搜索结果数组，包含详细信息' },
+  { name: 'results[].message_id', type: 'string', description: 'TG消息ID' },
+  { name: 'results[].unique_id', type: 'string', description: '全局唯一ID' },
+  { name: 'results[].channel', type: 'string', description: '来源频道名称' },
+  { name: 'results[].datetime', type: 'string', description: '发布时间(ISO格式)' },
+  { name: 'results[].title', type: 'string', description: '消息标题' },
+  { name: 'results[].content', type: 'string', description: '消息内容' },
+  { name: 'results[].links', type: 'object[]', description: '包含的网盘链接数组' },
+  { name: 'results[].tags', type: 'string[]', description: '消息标签(可选)' },
+  { name: 'results[].images', type: 'string[]', description: '图片链接(可选)' },
+  { name: 'merged_by_type', type: 'object', description: '按网盘类型分组的链接' },
+  { name: 'merged_by_type.{type}', type: 'object[]', description: '特定网盘类型的链接数组' },
+  { name: 'merged_by_type.{type}[].url', type: 'string', description: '网盘链接地址' },
+  { name: 'merged_by_type.{type}[].password', type: 'string', description: '提取码/密码' },
+  { name: 'merged_by_type.{type}[].note', type: 'string', description: '资源说明/标题' },
+  { name: 'merged_by_type.{type}[].datetime', type: 'string', description: '发布时间' },
+  { name: 'merged_by_type.{type}[].source', type: 'string', description: '数据来源(tg:频道名 或 plugin:插件名)' },
+  { name: 'merged_by_type.{type}[].images', type: 'string[]', description: '图片链接(可选)' }
 ];
 
 // 健康检查响应字段
@@ -1217,6 +1257,50 @@ const copyToClipboard = async (text: string) => {
   margin-bottom: 3rem;
 }
 
+.field-notes {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+
+.field-notes h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notes-list {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.7;
+}
+
+.notes-list li {
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.notes-list strong {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+/* 响应字段表格样式 */
+.response-header {
+  grid-template-columns: 1.5fr 1fr 2fr !important;
+}
+
+.response-row {
+  grid-template-columns: 1.5fr 1fr 2fr !important;
+}
+
 /* 条件字段样式 */
 .conditional-field {
   position: relative;
@@ -1294,6 +1378,10 @@ const copyToClipboard = async (text: string) => {
   
   .param-header span, .param-row span {
     padding: 0.25rem 0;
+  }
+  
+  .response-header, .response-row {
+    grid-template-columns: 1fr !important;
   }
   
   .form-row {
