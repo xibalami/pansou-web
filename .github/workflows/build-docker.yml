@@ -91,10 +91,17 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
+          # 分支标签
           type=ref,event=branch
+          # PR标签
           type=ref,event=pr
+          # 语义化版本标签
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          # latest标签 - 仅在main分支推送时生成
+          type=raw,value=latest,enable={{is_default_branch}}
+          # commit hash标签
           type=sha,prefix=sha-
 
     - name: Build and push Docker image

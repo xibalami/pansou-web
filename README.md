@@ -1,376 +1,95 @@
 # PanSou Web
 
-PanSou 的现代化 Web 前端界面，基于 Vue 3 构建的高性能网盘资源搜索应用。
+🚀 一体化网盘资源搜索应用，基于Vue 3 + Go构建，开箱即用的Docker镜像。
 
-[![Vue](https://img.shields.io/badge/Vue-3.5.17-4FC08D?style=flat-square&logo=vue.js)](https://vuejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-4.5.1-646CFF?style=flat-square&logo=vite)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.0-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
+## 快速开始
 
-## ✨ 特性
-
-### 🚀 现代化技术栈
-- **Vue 3** + **TypeScript** - 类型安全的现代前端框架
-- **Tailwind CSS** - 原子化CSS框架，支持深色模式
-- **Vite** - 极速的开发构建工具
-- **响应式设计** - 完美适配桌面端和移动端
-
-### 🎯 核心功能
-- **智能搜索** - 渐进式搜索策略，先快速返回TG结果，再逐步完善
-- **多源搜索** - 支持Telegram频道搜索和插件搜索
-- **分类展示** - 按网盘类型（百度网盘、阿里云盘、夸克网盘等）智能分类
-- **实时更新** - 搜索过程中自动更新结果，提供最新数据
-- **状态监控** - API健康状态实时监控
-- **API文档** - 内置交互式API文档
-
-### 🔥 搜索策略
-```
-用户搜索 → TG快速搜索(2s内) → ALL源搜索(+2s) → 第二轮更新(+3s) → 完成
-           ↓                ↓              ↓
-         快速响应          综合结果        最新数据
-```
-
-### 📱 用户体验
-- **毫秒级响应** - 优化的API调用和缓存策略
-- **优雅动画** - 流畅的页面切换和加载动画
-- **错误容错** - 网络异常时自动降级到模拟数据
-- **无障碍设计** - 符合Web无障碍标准
-
-## 🖼️ 界面预览
-
-- **搜索界面** - 简洁直观的搜索体验
-- **结果展示** - 按网盘类型分标签页展示
-- **状态页面** - API服务状态和插件监控
-- **文档页面** - 完整的API使用说明
-
-## 🛠️ 技术架构
-
-### 目录结构
-```
-src/
-├── api/           # API接口封装
-├── assets/        # 静态资源
-├── components/    # Vue组件
-│   ├── ui/        # 基础UI组件
-│   ├── ApiDocs.vue    # API文档组件
-│   ├── ApiStatus.vue  # API状态组件
-│   ├── ResultTabs.vue # 搜索结果组件
-│   ├── SearchForm.vue # 搜索表单组件
-│   └── SearchStats.vue # 搜索统计组件
-├── types/         # TypeScript类型定义
-├── utils/         # 工具函数
-├── App.vue        # 根组件
-└── main.ts        # 入口文件
-```
-
-### 核心组件
-
-#### SearchForm.vue
-- 搜索关键词输入
-- 搜索源选择（全部/TG/插件）
-- 插件选择器
-- 高级搜索选项
-
-#### ResultTabs.vue  
-- 按网盘类型分标签页
-
-#### ApiStatus.vue
-- 服务健康状态
-- 插件状态监控
-- 频道连接状态
-- 性能指标展示
-
-#### ApiDocs.vue
-- 交互式API文档
-- 请求示例
-- 响应格式说明
-- 参数详细说明
-
-## 🚀 快速开始
-
-### 环境要求
-
-- Node.js 16+ 
-- npm 或 yarn
-
-### 安装依赖
+### 一键启动
 
 ```bash
-npm install
+docker run -d --name pansou -p 80:80 ghcr.io/fish2018/pansou-web
 ```
 
-### 开发调试
+访问：http://localhost
+
+### Docker Compose（推荐）
 
 ```bash
-npm run dev
+# 下载配置文件
+curl -o docker-compose.yml https://raw.githubusercontent.com/fish2018/pansou-web/main/docker-compose.yml
+
+# 启动服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
 ```
 
-访问 http://localhost:5173 查看开发版本
+## 环境变量
 
-> 开发模式下，API请求会代理到配置的后端地址（默认：`http://localhost:8888`）
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `DOMAIN` | `localhost` | 访问域名 |
+| `PANSOU_PORT` | `8888` | 后端端口 |
+| `PANSOU_HOST` | `127.0.0.1` | 后端地址 |
 
-### 构建生产版本
-
-```bash
-npm run build
-```
-
-构建产物输出到 `dist/` 目录
-
-### 预览生产版本
-
-```bash
-npm run preview
-```
-
-## 🔧 环境变量配置
-
-### 后端API地址配置
-
-项目支持通过环境变量配置后端API地址，便于不同环境的部署。
-
-#### 创建环境配置文件
-
-在项目根目录创建 `.env` 文件：
-
-```bash
-# .env
-VITE_API_BASE_URL=http://localhost:8888
-```
-
-#### 环境变量说明
-
-| 变量名 | 说明 | 默认值 | 示例 |
-|--------|------|--------|------|
-| `VITE_API_BASE_URL` | 后端API基础地址 | `http://localhost:8888` | `https://api.example.com` |
-
-#### 不同环境配置示例
-
-```bash
-# 开发环境 (.env.development)
-VITE_API_BASE_URL=http://localhost:8888
-
-# 生产环境 (.env.production) 
-VITE_API_BASE_URL=https://your-pansou-api.com
-
-# 测试环境 (.env.test)
-VITE_API_BASE_URL=https://test-api.example.com
-```
-
-> **注意**: `.env` 文件不应提交到版本控制系统。请将其添加到 `.gitignore` 中。
-
-## ⚙️ 配置说明
-
-### Vite 配置 (vite.config.js)
-
-```javascript
-export default defineConfig(({ mode }) => {
-  // 加载环境变量
-  const env = loadEnv(mode, process.cwd(), '')
-  
-  return {
-    plugins: [vue()],
-    resolve: {
-      alias: {
-        '@': fileURLToPath(new URL('./src', import.meta.url))
-      }
-    },
-    server: {
-      proxy: {
-        '/api': {
-          target: env.VITE_API_BASE_URL || 'http://localhost:8888',
-          changeOrigin: true
-        }
-      }
-    }
-  }
-})
-```
-
-### API 配置
-
-```typescript
-// src/api/index.ts
-const api = axios.create({
-  baseURL: '/api',  // 生产环境使用相对路径
-  timeout: 10000
-});
-```
-
-### 主题配置
-
-项目使用 CSS 变量系统，支持明暗主题切换：
-
-```css
-:root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --primary: 222.2 47.4% 11.2%;
-  /* ... 更多主题变量 */
-}
-```
-
-## 🔌 API 集成
-
-### 搜索接口
-
-```typescript
-interface SearchParams {
-  kw: string;           // 搜索关键词
-  refresh?: boolean;    // 是否刷新缓存
-  res?: 'all' | 'results' | 'merge';  // 响应格式
-  src?: 'all' | 'tg' | 'plugin';      // 搜索源
-  plugins?: string;     // 指定插件
-}
-```
-
-### 响应格式
-
-```typescript
-interface SearchResponse {
-  total: number;                    // 总结果数
-  results: ResultItem[];           // 详细结果列表
-  merged_by_type: MergedResults;   // 按类型合并的结果
-}
-```
-
-## 🎨 样式系统
-
-### Tailwind CSS 定制
-
-- **设计系统** - 基于 shadcn/ui 设计令牌
-- **响应式** - Mobile-first 响应式设计
-- **主题切换** - 支持明暗主题无缝切换
-- **动画效果** - 流畅的过渡和加载动画
-
-### 关键样式类
-
-```css
-.card - 卡片容器样式
-.nav-button - 导航按钮样式
-.bg-decorative - 背景装饰图案
-```
-
-## 📦 部署
-
-### 🐳 Docker 一体化部署（推荐）
-
-项目已集成 GitHub Actions，可自动构建包含前后端的统一 Docker 镜像。
-
-#### 快速启动
-
-```bash
-# 使用最新镜像
-docker run -d \
-  --name pansou-app \
-  -p 80:80 \
-  -v pansou-data:/app/data \
-  ghcr.io/fish2018/pansou-web:main
-
-# 访问应用
-open http://localhost
-```
-
-#### 环境变量配置
+### 自定义配置示例
 
 ```bash
 docker run -d \
-  --name pansou-app \
+  --name pansou \
   -p 80:80 \
   -e DOMAIN=yourdomain.com \
-  -e PANSOU_PORT=8888 \
-  -e PANSOU_HOST=127.0.0.1 \
   -v pansou-data:/app/data \
-  -v /path/to/ssl:/app/data/ssl \
-  ghcr.io/fish2018/pansou-web:main
+  ghcr.io/fish2018/pansou-web
 ```
 
-#### Docker Compose 部署
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  pansou:
-    image: ghcr.io/fish2018/pansou-web:main
-    container_name: pansou-app
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - DOMAIN=yourdomain.com
-      - PANSOU_PORT=8888
-      - PANSOU_HOST=127.0.0.1
-    volumes:
-      - pansou-data:/app/data
-      - pansou-logs:/app/logs
-      - ./ssl:/app/data/ssl  # SSL证书目录（可选）
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-volumes:
-  pansou-data:
-  pansou-logs:
-```
-
-#### 镜像构建流程
-
-GitHub Actions 自动化流程：
-
-1. **拉取源码**：同时拉取前端（pansou-web）和后端（pansou）仓库
-2. **构建前端**：`npm ci && npm run build`
-3. **构建后端**：`go build -o pansou .`
-4. **Docker 构建**：将前端静态文件 + 后端二进制 + Nginx 打包成镜像
-5. **推送镜像**：自动推送到 GitHub Container Registry
-
-#### 版本标签说明
-
-- `main` - 主分支最新版本
-- `develop` - 开发分支版本
-- `v1.0.0` - 语义化版本标签
-- `sha-abc123` - 基于 commit hash 的版本
-
-### 📁 单独部署
-
-如需独立部署前端：
-
-1. 构建项目：`npm run build`
-2. 部署 `dist/` 目录到静态服务器
-3. 配置服务器代理 `/api` 到 PanSou 后端
-
-### 🏗️ 自定义构建
-
-本地构建 Docker 镜像：
+## 数据持久化
 
 ```bash
-# 克隆项目
-git clone https://github.com/fish2018/pansou-web.git
-cd pansou-web
+# 数据目录挂载
+-v /path/to/data:/app/data
 
-# 克隆后端项目
-git clone https://github.com/fish2018/pansou.git backend
+# 日志目录挂载  
+-v /path/to/logs:/app/logs
 
-# 构建前端
-npm install && npm run build
-
-# 构建后端
-cd backend && go build -o pansou . && cd ..
-
-# 准备构建上下文
-mkdir -p build-context
-cp -r dist build-context/frontend-dist
-cp backend/pansou build-context/
-cp Dockerfile start.sh build-context/
-
-# 构建镜像
-docker build -t pansou-web:local build-context/
-
-# 运行容器
-docker run -d -p 80:80 --name pansou-local pansou-web:local
+# SSL证书目录（可选）
+-v /path/to/ssl:/app/data/ssl
 ```
+
+## HTTPS 配置
+
+将SSL证书放入数据目录的ssl子目录：
+
+```
+/app/data/ssl/
+├── fullchain.pem    # 证书文件
+└── privkey.pem      # 私钥文件
+```
+
+重启容器后自动启用HTTPS。
+
+## 常用命令
+
+```bash
+# 查看运行状态
+docker ps
+
+# 查看日志
+docker logs pansou
+
+# 重启服务
+docker restart pansou
+
+# 停止服务
+docker stop pansou
+
+# 更新镜像
+docker pull ghcr.io/fish2018/pansou-web && docker restart pansou
+```
+
+## 健康检查
+
+访问 http://localhost/api/health 查看服务状态。
+
+

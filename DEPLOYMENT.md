@@ -21,12 +21,19 @@
 ### 方式一：Docker Run (最简单)
 
 ```bash
-# 1. 运行容器
+# 1. 运行容器 (使用最新稳定版)
 docker run -d \
   --name pansou-app \
   -p 80:80 \
   -v pansou-data:/app/data \
-  ghcr.io/fish2018/pansou-web:main
+  ghcr.io/fish2018/pansou-web:latest
+
+# 或者更简单 (省略:latest标签)
+docker run -d \
+  --name pansou-app \
+  -p 80:80 \
+  -v pansou-data:/app/data \
+  ghcr.io/fish2018/pansou-web
 
 # 2. 访问应用
 open http://localhost
@@ -59,7 +66,7 @@ cat > docker-compose.yml << 'EOF'
 version: '3.8'
 services:
   pansou:
-    image: ghcr.io/fish2018/pansou-web:main
+    image: ghcr.io/fish2018/pansou-web:latest
     container_name: pansou-app
     ports:
       - "80:80"
@@ -242,7 +249,7 @@ chmod +x update.sh
 cp -r data data_backup_$(date +%Y%m%d)
 
 # 2. 拉取最新镜像
-docker pull ghcr.io/fish2018/pansou-web:main
+docker pull ghcr.io/fish2018/pansou-web:latest
 
 # 3. 重启服务
 docker-compose up -d
