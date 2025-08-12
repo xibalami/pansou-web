@@ -13,6 +13,7 @@ export interface SearchParams {
   res?: 'all' | 'results' | 'merge';
   src?: 'all' | 'tg' | 'plugin';
   plugins?: string;
+  ext?: string;
 }
 
 // API响应包装类型
@@ -56,14 +57,20 @@ const getMockHealthData = (): HealthStatus => {
 
 // 搜索API
 export const search = async (params: SearchParams): Promise<SearchResponse> => {
-  console.log('搜索参数:', params);
+  // 添加ext参数，包含referer信息
+  const searchParams = {
+    ...params,
+    ext: JSON.stringify({ referer: "https://dm.xueximeng.com" })
+  };
+  
+  // console.log('搜索参数:', searchParams);
   try {
-    const response = await api.get<ApiResponse<SearchResponse>>('/search', { params });
-    console.log('API响应:', response.data);
+    const response = await api.get<ApiResponse<SearchResponse>>('/search', { params: searchParams });
+    // console.log('API响应:', response.data);
     
     // 如果响应中包含data字段，则返回data
     if (response.data && response.data.data) {
-      console.log('提取的数据:', response.data.data);
+      // console.log('提取的数据:', response.data.data);
       return response.data.data;
     }
     
@@ -79,7 +86,7 @@ export const search = async (params: SearchParams): Promise<SearchResponse> => {
     console.error('API错误:', error);
     
     // 开发阶段使用模拟数据
-    console.log('使用模拟数据');
+    // console.log('使用模拟数据');
     return getMockData();
   }
 };
