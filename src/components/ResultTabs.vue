@@ -46,13 +46,17 @@ const showInitialState = computed(() => {
   return !hasResults.value && !props.hasSearched;
 });
 
-// 监听结果变化，自动选择第一个标签
+// 监听结果变化，智能选择标签
 watch(
   () => props.mergedResults,
   (newVal) => {
     if (newVal && Object.keys(newVal).length > 0) {
       nextTick(() => {
-        activeTab.value = diskTypes.value[0] || '';
+        // 如果当前没有选中标签，或者当前选中的标签在新数据中不存在，则选择第一个标签
+        const availableTypes = Object.keys(newVal);
+        if (!activeTab.value || !availableTypes.includes(activeTab.value)) {
+          activeTab.value = availableTypes[0] || '';
+        }
         updateCurrentTabData();
       });
     } else {
