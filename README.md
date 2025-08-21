@@ -93,7 +93,7 @@ docker run -d \
   -p 80:80 \
   -e DOMAIN=yourdomain.com \
   -e SOCKS5_PROXY=socks5://127.0.0.1:1080 \
-  -e CHANNELS=tgsearchers2,yunpanxunlei,BaiduCloudDisk \
+  -e CHANNELS=tgsearchers3,yunpanxunlei,BaiduCloudDisk \
   -v pansou-data:/app/data \
   ghcr.io/fish2018/pansou-web
 ```
