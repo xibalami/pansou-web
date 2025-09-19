@@ -6,6 +6,7 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -43,6 +44,7 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
+        cache: true
         cache-dependency-path: backend/go.sum
 
     - name: Install frontend dependencies
@@ -63,9 +65,9 @@ jobs:
       working-directory: backend
       run: |
         # 构建 AMD64 版本
-        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o pansou-amd64 .
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o pansou-amd64 .
         # 构建 ARM64 版本
-        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -installsuffix cgo -o pansou-arm64 .
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o pansou-arm64 .
         chmod +x pansou-*
 
     - name: Prepare build context
@@ -76,10 +78,15 @@ jobs:
         # 复制后端二进制文件 (多架构)
         cp backend/pansou-amd64 build-context/
         cp backend/pansou-arm64 build-context/
-        # 复制Docker相关文件
-        cp frontend/Dockerfile build-context/
-        cp frontend/start.sh build-context/
+        # 复制Docker相关文件（来自 frontend 目录）
+        cp frontend/Dockerfile build-context/Dockerfile
+        cp frontend/start.sh build-context/start.sh
         chmod +x build-context/start.sh
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64,amd64
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -115,10 +122,13 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: build-context
+        file: build-context/Dockerfile
         platforms: linux/amd64,linux/arm64
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
         build-args: |
           BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
           VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
