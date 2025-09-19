@@ -1,41 +1,59 @@
-ARG PANSOU_VERSION=latest
+FROM nginx:alpine
 
-# ===== 后端阶段：按目标架构编译 pansou，可通过 PANSOU_VERSION 固定版本 =====
-FROM golang:1.21-alpine AS backend
-RUN apk add --no-cache git
-WORKDIR /build
-ARG TARGETOS TARGETARCH
-ENV CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH
-# 生成 /go/bin/pansou
-RUN go install github.com/fish2018/pansou@${PANSOU_VERSION}
-
-# ===== 前端阶段：构建 dist =====
-FROM node:18-alpine AS frontend
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-# ===== 运行阶段：Nginx + 后端一体化 =====
-FROM nginx:alpine AS runtime
+# 安装必要的运行时依赖
 RUN apk add --no-cache ca-certificates tzdata curl
-ENV TZ=Asia/Shanghai \
-    PANSOU_HOST=127.0.0.1 \
-    PANSOU_PORT=8888 \
-    ENABLED_PLUGINS="labi,zhizhen,shandian,duoduo,muou,wanou"
+
+# 设置时区
+ENV TZ=Asia/Shanghai
+
+# 设置默认环境变量
+ENV PANSOU_PORT=8888
+ENV PANSOU_HOST=127.0.0.1
+
+# 默认插件配置
+ENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou
+
+# 默认Telegram频道配置
+ENV CHANNELS=tgsearchers3,Aliyun_4K_Movies,bdbdndn11,yunpanx,bsbdbfjfjff,yp123pan,sbsbsnsqq,yunpanxunlei,tianyifc,BaiduCloudDisk,txtyzy,peccxinpd,gotopan,PanjClub,kkxlzy,baicaoZY,MCPH01,bdwpzhpd,ysxb48,jdjdn1111,yggpan,MCPH086,zaihuayun,Q66Share,Oscar_4Kmovies,ucwpzy,shareAliyun,alyp_1,dianyingshare,Quark_Movies,XiangxiuNBB,ydypzyfx,ucquark,xx123pan,yingshifenxiang123,zyfb123,tyypzhpd,tianyirigeng,cloudtianyi,hdhhd21,Lsp115,oneonefivewpfx,qixingzhenren,taoxgzy,Channel_Shares_115,tyysypzypd,vip115hot,wp123zy,yunpan139,yunpan189,yunpanuc,yydf_hzl,leoziyuan,pikpakpan,Q_dongman,yoyokuakeduanju
+
+# 默认性能配置
+ENV CACHE_ENABLED=true
+ENV CACHE_TTL=3600
+ENV MAX_CONCURRENCY=200
+ENV MAX_PAGES=30
+
+# 创建应用目录
 WORKDIR /app
 
-# 拷贝产物
-COPY --from=backend  /go/bin/pansou   /app/pansou
-COPY --from=frontend /app/dist/       /app/frontend/dist/
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh && mkdir -p /app/data /app/logs /var/log/nginx
+# 获取架构信息
+ARG TARGETARCH
 
-# 健康检查：Render 会注入 $PORT；本地无则走 80
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -fsS "http://127.0.0.1:${PORT:-80}/api/health" || exit 1
+# 复制对应架构的后端二进制文件
+COPY pansou-${TARGETARCH} /app/pansou
+RUN chmod +x /app/pansou
 
+# 复制前端构建产物
+COPY frontend-dist /app/frontend/dist/
+
+# 复制启动脚本
+COPY start.sh /app/
+RUN chmod +x /app/start.sh
+
+# 创建必要的目录
+RUN mkdir -p /app/data /app/logs /var/log/nginx
+
+# 创建nginx配置目录
+RUN mkdir -p /etc/nginx/conf.d
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3
+CMD curl -f "http://127.0.0.1:${PORT:-80}/api/health" || exit 1
+
+# 暴露端口
 EXPOSE 80 443
+
+# 设置卷挂载点
 VOLUME ["/app/data", "/app/logs"]
+
+# 设置启动命令
 CMD ["/app/start.sh"]
