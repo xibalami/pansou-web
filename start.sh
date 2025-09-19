@@ -1,10 +1,12 @@
 #!/bin/sh
 set -e
 
-# 后端固定内网 8888；Render 会把外网 $PORT（默认 10000）转进来
+# 后端固定内网端口，避免受 Render 注入的 PORT 影响
 export PANSOU_PORT=${PANSOU_PORT:-8888}
 export PANSOU_HOST=${PANSOU_HOST:-127.0.0.1}
 export DOMAIN=${DOMAIN:-localhost}
+
+# Render 会注入 PORT（默认 10000）；本地无该变量时用 80
 FRONT_PORT="${PORT:-80}"
 
 echo "正在启动PanSou服务，配置信息如下："
@@ -15,7 +17,10 @@ echo "- 前端目录: /app/frontend/dist"
 
 mkdir -p /app/data /app/logs /var/log/nginx
 
-# 仅一个 server，监听 $PORT；TLS 由 Render 终止，容器内不再监听 443/做 80->443 跳转
+# 容器内不启用 HTTPS（PaaS/反代侧终止 TLS）
+echo "未在容器内启用 HTTPS（由上游代理终止 TLS）"
+
+# 生成 Nginx 配置：监听 $FRONT_PORT，/api 反代后端 8888
 cat > /etc/nginx/conf.d/default.conf << EOF
 server {
     listen ${FRONT_PORT};
@@ -75,6 +80,7 @@ server {
         try_files \$uri \$uri/ /index.html;
     }
 
+    # 防止 HTML 缓存
     location ~* \.html$ {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Pragma "no-cache";
@@ -85,7 +91,7 @@ EOF
 
 echo "Nginx配置已生成"
 
-# 启动后端：显式固定 8888，并屏蔽 PORT 影响（只对 ./pansou 生效）
+# 启动后端：显式屏蔽 PORT 影响，强制使用 8888
 echo "启动PanSou后端服务..."
 cd /app
 PORT= \
@@ -94,6 +100,7 @@ PANSOU_PORT="${PANSOU_PORT}" \
 DOMAIN="${DOMAIN}" \
 ./pansou > /app/logs/pansou.log 2>&1 &
 
+# 等待后端服务启动
 echo "等待后端服务启动..."
 for i in $(seq 1 30); do
     if curl -fsS "http://${PANSOU_HOST}:${PANSOU_PORT}/api/health" >/dev/null 2>&1; then
@@ -104,6 +111,7 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
+# 启动失败时输出日志并退出
 if ! curl -fsS "http://${PANSOU_HOST}:${PANSOU_PORT}/api/health" >/dev/null 2>&1; then
     echo "错误: 后端服务启动失败"
     echo "--------- /app/logs/pansou.log ---------"
@@ -111,6 +119,7 @@ if ! curl -fsS "http://${PANSOU_HOST}:${PANSOU_PORT}/api/health" >/dev/null 2>&1
     exit 1
 fi
 
+# 前台运行 Nginx
 echo "启动Nginx服务..."
 nginx -t
 exec nginx -g "daemon off;"
