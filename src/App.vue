@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
-import { search, type SearchParams } from '@/api';
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+import { search, checkAuthStatus, logout, type SearchParams } from '@/api';
 import type { SearchResponse, MergedResults } from '@/types';
 import SearchForm from '@/components/SearchForm.vue';
 import ResultTabs from '@/components/ResultTabs.vue';
 import SearchStats from '@/components/SearchStats.vue';
 import ApiStatus from '@/components/ApiStatus.vue';
 import ApiDocs from '@/components/ApiDocs.vue';
+import LoginDialog from '@/components/LoginDialog.vue';
 
 // 搜索状态
 const loading = ref(false);
@@ -36,6 +37,11 @@ const isActivelySearching = ref(false);
 
 // 当前页面状态
 const currentPage = ref<'search' | 'status' | 'docs'>('search');
+
+// 登录状态
+const showLogin = ref(false);
+const isAuthenticated = ref(false);
+const currentUsername = ref('');
 
 // 页面切换
 const switchToStatus = () => {
@@ -323,19 +329,57 @@ const resetToInitial = () => {
   updateCount.value = 0;
 };
 
+// 检查认证状态
+const checkAuth = async () => {
+  const status = await checkAuthStatus();
+  if (status.enabled && !status.authenticated) {
+    showLogin.value = true;
+    isAuthenticated.value = false;
+  } else if (status.enabled && status.authenticated) {
+    isAuthenticated.value = true;
+    currentUsername.value = localStorage.getItem('auth_username') || '';
+  }
+};
+
+// 监听401事件
+const handleAuthRequired = () => {
+  showLogin.value = true;
+};
+
+// 登录成功处理
+const handleLoginSuccess = () => {
+  window.location.reload();
+};
+
+// 退出登录
+const handleLogout = async () => {
+  if (confirm('确定要退出登录吗？')) {
+    await logout();
+    window.location.reload();
+  }
+};
+
 // 组件卸载时清除定时器
 onMounted(() => {
-  // App组件已挂载
+  checkAuth();
+  window.addEventListener('auth:required', handleAuthRequired);
 });
 
 onUnmounted(() => {
   // 确保在组件卸载时清理所有定时器
   stopUpdate();
+  window.removeEventListener('auth:required', handleAuthRequired);
 });
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground transition-colors duration-300 flex flex-col">
+    <!-- 登录对话框 -->
+    <LoginDialog 
+      v-model:visible="showLogin" 
+      @success="handleLoginSuccess"
+    />
+    
     <!-- 背景装饰 -->
     <div class="bg-decorative"></div>
     
@@ -368,6 +412,15 @@ onUnmounted(() => {
           >
             <span class="nav-icon">📖</span>
             API文档
+          </button>
+          <button 
+            v-if="isAuthenticated"
+            @click="handleLogout"
+            class="nav-button logout-button"
+            :title="'当前用户: ' + currentUsername"
+          >
+            <span class="nav-icon">🚪</span>
+            退出
           </button>
         </nav>
       </div>
@@ -483,6 +536,24 @@ onUnmounted(() => {
   background: hsl(var(--accent));
   color: hsl(var(--accent-foreground));
   border-color: hsl(var(--accent));
+}
+
+.logout-button {
+  border-color: hsl(0, 84%, 60%);
+  color: hsl(0, 84%, 60%);
+}
+
+.logout-button:hover {
+  background: hsl(0, 84%, 95%);
+  border-color: hsl(0, 84%, 60%);
+  color: hsl(0, 84%, 50%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .logout-button:hover {
+    background: hsl(0, 84%, 20%);
+    color: hsl(0, 84%, 90%);
+  }
 }
 
 

@@ -6,6 +6,36 @@ const api = axios.create({
   timeout: 10000
 });
 
+// 请求拦截器 - 自动添加token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// 响应拦截器 - 处理401
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // 清除token
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_username');
+      
+      // 触发显示登录窗口的事件
+      window.dispatchEvent(new CustomEvent('auth:required'));
+    }
+    return Promise.reject(error);
+  }
+);
+
 // 搜索参数接口
 export interface SearchParams {
   kw: string;
@@ -30,6 +60,26 @@ export interface HealthStatus {
   plugin_count: number;
   plugins: string[];
   channels: string[];
+  auth_enabled?: boolean;
+}
+
+// 登录请求参数
+export interface LoginParams {
+  username: string;
+  password: string;
+}
+
+// 登录响应
+export interface LoginResponse {
+  token: string;
+  expires_at: number;
+  username: string;
+}
+
+// 认证状态
+export interface AuthStatus {
+  enabled: boolean;
+  authenticated: boolean;
 }
 
 // 获取API健康状态
@@ -149,6 +199,54 @@ const getMockData = (): SearchResponse => {
       ]
     }
   };
+};
+
+// 登录
+export const login = async (params: LoginParams): Promise<LoginResponse> => {
+  const response = await api.post<LoginResponse>('/auth/login', params);
+  return response.data;
+};
+
+// 验证token
+export const verifyToken = async (): Promise<boolean> => {
+  try {
+    await api.post('/auth/verify');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// 退出登录
+export const logout = async (): Promise<void> => {
+  try {
+    await api.post('/auth/logout');
+  } finally {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_username');
+  }
+};
+
+// 检查认证状态
+export const checkAuthStatus = async (): Promise<AuthStatus> => {
+  try {
+    const health = await getHealth();
+    const authEnabled = health.auth_enabled || false;
+    const token = localStorage.getItem('auth_token');
+    
+    if (!authEnabled) {
+      return { enabled: false, authenticated: true };
+    }
+    
+    if (!token) {
+      return { enabled: true, authenticated: false };
+    }
+    
+    const valid = await verifyToken();
+    return { enabled: true, authenticated: valid };
+  } catch {
+    return { enabled: false, authenticated: true };
+  }
 };
 
 export default api; 

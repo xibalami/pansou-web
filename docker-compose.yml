@@ -28,6 +28,12 @@ services:
       # - CACHE_TTL=3600
       # - MAX_CONCURRENCY=200
       # - MAX_PAGES=30
+      
+      # 认证配置（可选，默认不启用）
+      # - AUTH_ENABLED=true
+      # - AUTH_USERS=admin:admin123,user:pass456
+      # - AUTH_TOKEN_EXPIRY=24
+      # - AUTH_JWT_SECRET=your-secret-key-here
     volumes:
       # 数据持久化
       - pansou-data:/app/data

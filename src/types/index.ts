@@ -36,4 +36,33 @@ export interface SearchResponse {
   total: number;
   results: ResultItem[];
   merged_by_type: MergedResults;
+}
+
+// 健康状态类型
+export interface HealthStatus {
+  status: string;
+  plugins_enabled: boolean;
+  plugin_count: number;
+  plugins: string[];
+  channels: string[];
+  auth_enabled?: boolean;
+}
+
+// 登录请求参数
+export interface LoginParams {
+  username: string;
+  password: string;
+}
+
+// 登录响应
+export interface LoginResponse {
+  token: string;
+  expires_at: number;
+  username: string;
+}
+
+// 认证状态
+export interface AuthStatus {
+  enabled: boolean;
+  authenticated: boolean;
 } 
