@@ -114,43 +114,77 @@ const openLink = (url: string) => {
   window.open(url, '_blank');
 };
 
+// 通用复制函数（支持降级处理）
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  // 方法1: 尝试使用现代 Clipboard API (需要HTTPS)
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn('Clipboard API 失败，尝试降级方案:', err);
+    }
+  }
+  
+  // 方法2: 降级使用传统 execCommand 方法 (兼容HTTP)
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    
+    return successful;
+  } catch (err) {
+    console.error('复制失败:', err);
+    return false;
+  }
+};
+
 // 仅复制密码
-const copyPassword = (password: string, event: Event) => {
+const copyPassword = async (password: string, event: Event) => {
   // 阻止事件冒泡，避免触发父元素的点击事件
   event.stopPropagation();
   
   const target = event.target as HTMLElement;
   const passwordElement = target.closest('.result-password') as HTMLElement;
   
-  navigator.clipboard.writeText(password)
-    .then(() => {
-      // 在密码位置显示复制成功提示
-      if (passwordElement) {
-        const originalHTML = passwordElement.innerHTML;
-        passwordElement.innerHTML = `<span class="copy-success">复制成功</span>`;
-        passwordElement.classList.add('copied');
-        
-        // 2秒后恢复原始内容
-        setTimeout(() => {
-          passwordElement.innerHTML = originalHTML;
-          passwordElement.classList.remove('copied');
-        }, 2000);
-      }
-    })
-    .catch(() => {
-      // 复制失败时显示提示
-      if (passwordElement) {
-        const originalHTML = passwordElement.innerHTML;
-        passwordElement.innerHTML = `<span class="copy-error">复制失败</span>`;
-        passwordElement.classList.add('copy-failed');
-        
-        // 2秒后恢复原始内容
-        setTimeout(() => {
-          passwordElement.innerHTML = originalHTML;
-          passwordElement.classList.remove('copy-failed');
-        }, 2000);
-      }
-    });
+  const success = await copyToClipboard(password);
+  
+  if (success) {
+    // 在密码位置显示复制成功提示
+    if (passwordElement) {
+      const originalHTML = passwordElement.innerHTML;
+      passwordElement.innerHTML = `<span class="copy-success">复制成功</span>`;
+      passwordElement.classList.add('copied');
+      
+      // 2秒后恢复原始内容
+      setTimeout(() => {
+        passwordElement.innerHTML = originalHTML;
+        passwordElement.classList.remove('copied');
+      }, 2000);
+    }
+  } else {
+    // 复制失败时显示提示
+    if (passwordElement) {
+      const originalHTML = passwordElement.innerHTML;
+      passwordElement.innerHTML = `<span class="copy-error">复制失败</span>`;
+      passwordElement.classList.add('copy-failed');
+      
+      // 2秒后恢复原始内容
+      setTimeout(() => {
+        passwordElement.innerHTML = originalHTML;
+        passwordElement.classList.remove('copy-failed');
+      }, 2000);
+    }
+  }
 };
 
 // 格式化日期时间

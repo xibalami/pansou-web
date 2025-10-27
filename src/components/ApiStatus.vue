@@ -48,12 +48,42 @@ const generateEnvString = () => {
   return `export CHANNELS=${channels}`;
 };
 
-// 复制环境变量
+// 复制环境变量（支持降级处理）
 const copyEnvVariable = async () => {
-  try {
-    const envString = generateEnvString();
-    await navigator.clipboard.writeText(envString);
-    
+  const envString = generateEnvString();
+  let success = false;
+  
+  // 方法1: 尝试使用现代 Clipboard API (需要HTTPS)
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(envString);
+      success = true;
+    } catch (err) {
+      console.warn('Clipboard API 失败，尝试降级方案:', err);
+    }
+  }
+  
+  // 方法2: 降级使用传统 execCommand 方法 (兼容HTTP)
+  if (!success) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = envString;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      
+      textarea.select();
+      textarea.setSelectionRange(0, envString.length);
+      
+      success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
+  }
+  
+  if (success) {
     copySuccess.value = true;
     
     // 清除之前的定时器
@@ -65,8 +95,8 @@ const copyEnvVariable = async () => {
     copyTimeout.value = window.setTimeout(() => {
       copySuccess.value = false;
     }, 3000);
-  } catch (err) {
-    console.error('复制失败:', err);
+  } else {
+    alert('复制失败，请手动复制');
   }
 };
 

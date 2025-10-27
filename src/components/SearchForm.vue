@@ -11,6 +11,24 @@ const emit = defineEmits<{
   (e: 'searchComplete'): void;
 }>();
 
+// 从配置中加载用户设置
+const loadUserConfig = () => {
+  try {
+    const savedChannels = localStorage.getItem('pansou_channels');
+    const savedPlugins = localStorage.getItem('pansou_plugins');
+    const savedDiskTypes = localStorage.getItem('pansou_disk_types');
+    
+    return {
+      channels: savedChannels ? JSON.parse(savedChannels) : undefined,
+      plugins: savedPlugins ? JSON.parse(savedPlugins) : undefined,
+      cloudTypes: savedDiskTypes ? JSON.parse(savedDiskTypes) : undefined
+    };
+  } catch (err) {
+    console.error('加载用户配置失败:', err);
+    return {};
+  }
+};
+
 const handleSearch = () => {
   if (!keyword.value.trim()) {
     return;
@@ -18,11 +36,42 @@ const handleSearch = () => {
   
   loading.value = true;
   
+  // 加载用户配置
+  const userConfig = loadUserConfig();
+  
+  // 判断有哪些数据源
+  const hasChannels = userConfig.channels && userConfig.channels.length > 0;
+  const hasPlugins = userConfig.plugins && userConfig.plugins.length > 0;
+  
+  // 第一次搜索：优先使用TG（速度快），只有在没有TG时才用plugin
+  let src: 'all' | 'tg' | 'plugin' = 'tg';
+  if (!hasChannels && hasPlugins) {
+    src = 'plugin';  // 只有插件，没有TG频道
+  } else if (!hasChannels && !hasPlugins) {
+    src = 'all';     // 都没有，使用默认配置
+  }
+  // 有TG频道时，始终使用 src=tg（快速返回）
+  
   const params: SearchParams = {
     kw: keyword.value,
     res: 'merge',
-    src: 'all'
+    src: src
   };
+  
+  // 添加用户配置的参数
+  if (hasChannels) {
+    // 将频道数组转为逗号分隔的字符串
+    (params as any).channels = userConfig.channels.join(',');
+  }
+  
+  if (hasPlugins) {
+    params.plugins = userConfig.plugins.join(',');
+  }
+  
+  if (userConfig.cloudTypes && userConfig.cloudTypes.length > 0) {
+    // 将网盘类型数组转为逗号分隔的字符串
+    (params as any).cloud_types = userConfig.cloudTypes.join(',');
+  }
   
   emit('search', params);
   

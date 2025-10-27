@@ -972,10 +972,41 @@ const loadHealthStatus = async () => {
 // 组件加载时获取健康状态
 loadHealthStatus();
 
-// 复制到剪贴板
+// 复制到剪贴板（支持降级处理）
 const copyToClipboard = async (text: string) => {
-  try {
-    await navigator.clipboard.writeText(text);
+  let success = false;
+  
+  // 方法1: 尝试使用现代 Clipboard API (需要HTTPS)
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      success = true;
+    } catch (err) {
+      console.warn('Clipboard API 失败，尝试降级方案:', err);
+    }
+  }
+  
+  // 方法2: 降级使用传统 execCommand 方法 (兼容HTTP)
+  if (!success) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      
+      success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
+  }
+  
+  if (success) {
     // 创建临时的成功提示
     const toast = document.createElement('div');
     toast.textContent = '✅ 已复制到剪贴板!';
@@ -1022,8 +1053,8 @@ const copyToClipboard = async (text: string) => {
         }
       }, 300);
     }, 3000);
-  } catch (err) {
-    console.error('复制失败:', err);
+  } else {
+    // 复制失败提示
     alert('复制失败，请手动复制');
   }
 };

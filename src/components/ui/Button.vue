@@ -13,7 +13,7 @@
 import { computed } from 'vue';
 
 interface Props {
-  variant?: 'default' | 'secondary' | 'outline' | 'ghost' | 'icon'
+  variant?: 'default' | 'secondary' | 'outline' | 'ghost' | 'icon' | 'danger'
   size?: 'sm' | 'default' | 'lg'
   disabled?: boolean
   loading?: boolean
@@ -37,7 +37,8 @@ const buttonClasses = computed(() => {
     secondary: 'btn-secondary', 
     outline: 'btn-outline',
     ghost: 'btn-ghost',
-    icon: 'btn-icon'
+    icon: 'btn-icon',
+    danger: 'btn-danger'
   };
   const sizeClasses = {
     sm: 'btn-sm',

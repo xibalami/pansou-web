@@ -43,6 +43,8 @@ export interface SearchParams {
   res?: 'all' | 'results' | 'merge';
   src?: 'all' | 'tg' | 'plugin';
   plugins?: string;
+  channels?: string;
+  cloud_types?: string;
   ext?: string;
 }
 

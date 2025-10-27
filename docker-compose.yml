@@ -4,6 +4,8 @@ services:
   pansou:
     image: ghcr.io/fish2018/pansou-web:latest
     container_name: pansou-app
+    labels:
+      - "autoheal=true"  # 标记此容器允许被autoheal重启
     ports:
       - "80:80"
       - "443:443"
@@ -13,15 +15,18 @@ services:
       - PANSOU_PORT=8888
       - PANSOU_HOST=127.0.0.1
       
+      # 数据目录配置（统一在/app/data下）
+      - CACHE_PATH=/app/data/cache
+      - LOG_PATH=/app/data/logs
+      
       # 插件配置（镜像已包含推荐插件，如需自定义可取消注释并修改）
-      - ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou
+      - ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou,hunhepan,jikepan,panwiki,pansearch,panta,qupansou,hdr4k,pan666,susu,thepiratebay,xuexizhinan,panyq,ouge,huban,cyg,erxiao,miaoso,fox4k,pianku,clmao,wuji,cldi,xiaozhang,libvio,leijing,xb6v,xys,ddys,hdmoli,yuhuage,u3c3,javdb,clxiong,jutoushe,sdso,xiaoji,xdyh,haisou,bixin,djgou,nyaa,xinjuc,aikanzy,qupanshe,xdpan,discourse,yunsou
       
       # Telegram频道配置（镜像已包含这些默认频道，如需自定义可取消注释）
-      # - CHANNELS=tgsearchers3,Aliyun_4K_Movies,bdbdndn11,yunpanx,bsbdbfjfjff,yp123pan,sbsbsnsqq,yunpanxunlei,tianyifc,BaiduCloudDisk,txtyzy,peccxinpd,gotopan,PanjClub,kkxlzy,baicaoZY,MCPH01,bdwpzhpd,ysxb48,jdjdn1111,yggpan,MCPH086,zaihuayun,Q66Share,Oscar_4Kmovies,ucwpzy,shareAliyun,alyp_1,dianyingshare,Quark_Movies,XiangxiuNBB,ydypzyfx,ucquark,xx123pan,yingshifenxiang123,zyfb123,tyypzhpd,tianyirigeng,cloudtianyi,hdhhd21,Lsp115,oneonefivewpfx,qixingzhenren,taoxgzy,Channel_Shares_115,tyysypzypd,vip115hot,wp123zy,yunpan139,yunpan189,yunpanuc,yydf_hzl,leoziyuan,pikpakpan,Q_dongman,yoyokuakeduanju
+      - CHANNELS=tgsearchers3,Aliyun_4K_Movies,bdbdndn11,yunpanx,bsbdbfjfjff,yp123pan,sbsbsnsqq,yunpanxunlei,tianyifc,BaiduCloudDisk,txtyzy,peccxinpd,gotopan,PanjClub,kkxlzy,baicaoZY,MCPH01,bdwpzhpd,ysxb48,jdjdn1111,yggpan,MCPH086,zaihuayun,Q66Share,ucwpzy,shareAliyun,alyp_1,dianyingshare,Quark_Movies,XiangxiuNBB,ydypzyfx,ucquark,xx123pan,yingshifenxiang123,zyfb123,tyypzhpd,tianyirigeng,cloudtianyi,hdhhd21,Lsp115,oneonefivewpfx,qixingzhenren,taoxgzy,Channel_Shares_115,tyysypzypd,vip115hot,wp123zy,yunpan139,yunpan189,yunpanuc,yydf_hzl,leoziyuan,pikpakpan,Q_dongman,yoyokuakeduanju,TG654TG,WFYSFX02,QukanMovie,yeqingjie_GJG666,movielover8888_film3,Baidu_netdisk,D_wusun,FLMdongtianfudi,KaiPanshare,QQZYDAPP,rjyxfx
+      
       # 代理配置（可选）
-      # - PROXY=socks5://127.0.0.1:1080
-      # - PROXY=http://proxy:8080
-      # - PROXY=https://proxy:8080
+      # - PROXY=socks5://xxx.xxx.xxx.xxx:7897
       
       # 性能配置（镜像已包含默认值，如需调整可取消注释）
       # - CACHE_ENABLED=true
@@ -29,29 +34,44 @@ services:
       # - MAX_CONCURRENCY=200
       # - MAX_PAGES=30
       
+      # 健康检查配置（容器内部监控）
+      - HEALTH_CHECK_INTERVAL=30  # 后端服务健康检查间隔（秒）
+      - HEALTH_CHECK_TIMEOUT=10   # 健康检查超时时间（秒）
+      - HEALTH_CHECK_RETRIES=3    # 失败重试次数
+      
       # 认证配置（可选，默认不启用）
       # - AUTH_ENABLED=true
       # - AUTH_USERS=admin:admin123,user:pass456
       # - AUTH_TOKEN_EXPIRY=24
       # - AUTH_JWT_SECRET=your-secret-key-here
     volumes:
-      # 数据持久化
+      # 数据持久化（统一挂载/app/data，包含缓存、日志、SSL证书等所有数据）
       - pansou-data:/app/data
-      - pansou-logs:/app/logs
-      # SSL证书（可选）
+      # 如果需要从宿主机挂载SSL证书，可以使用：
       # - ./ssl:/app/data/ssl
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      test: ["CMD", "/app/healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
+  # 自动健康检查和重启服务（容器级别监控）
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: pansou-autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal  # 只监控带有autoheal标签的容器
+      - AUTOHEAL_INTERVAL=30  # 每30秒检查一次容器健康状态
+      - AUTOHEAL_START_PERIOD=60  # 启动后60秒开始检查
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10  # 停止容器的超时时间
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
 volumes:
   pansou-data:
-    driver: local
-  pansou-logs:
     driver: local
 
 # 网络配置（可选）

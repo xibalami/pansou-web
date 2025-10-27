@@ -32,8 +32,14 @@ export default defineConfig(({ mode }) => {
       }
     },
     server: {
+      host: 'localhost', // 确保使用localhost以支持Web Crypto API
+      port: 3000,
       proxy: {
         '/api': {
+          target: env.VITE_API_BASE_URL || 'http://localhost:8888',
+          changeOrigin: true
+        },
+        '/qqpd': {
           target: env.VITE_API_BASE_URL || 'http://localhost:8888',
           changeOrigin: true
         }

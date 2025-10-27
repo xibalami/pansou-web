@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
-import { search, checkAuthStatus, logout, type SearchParams } from '@/api';
+import { search, checkAuthStatus, logout, getHealth, type SearchParams } from '@/api';
 import type { SearchResponse, MergedResults } from '@/types';
 import SearchForm from '@/components/SearchForm.vue';
 import ResultTabs from '@/components/ResultTabs.vue';
 import SearchStats from '@/components/SearchStats.vue';
-import ApiStatus from '@/components/ApiStatus.vue';
+import SearchConfig from '@/components/SearchConfig.vue';
 import ApiDocs from '@/components/ApiDocs.vue';
 import LoginDialog from '@/components/LoginDialog.vue';
+import QQPDManager from '@/components/QQPDManager.vue';
 
 // 搜索状态
 const loading = ref(false);
@@ -36,12 +37,15 @@ const hasSearched = ref(false);
 const isActivelySearching = ref(false);
 
 // 当前页面状态
-const currentPage = ref<'search' | 'status' | 'docs'>('search');
+const currentPage = ref<'search' | 'status' | 'docs' | 'qqpd'>('search');
 
 // 登录状态
 const showLogin = ref(false);
 const isAuthenticated = ref(false);
 const currentUsername = ref('');
+
+// QQPD插件状态
+const isQQPDEnabled = ref(false);
 
 // 页面切换
 const switchToStatus = () => {
@@ -50,6 +54,10 @@ const switchToStatus = () => {
 
 const switchToDocs = () => {
   currentPage.value = 'docs';
+};
+
+const switchToQQPD = () => {
+  currentPage.value = 'qqpd';
 };
 
 
@@ -76,89 +84,56 @@ const handleSearch = async (params: SearchParams) => {
   
   const startTime = Date.now();
   
+  // 检查是否启用了插件（插件搜索是异步的，需要多次搜索）
+  const hasPlugins = (() => {
+    try {
+      const savedPlugins = localStorage.getItem('pansou_plugins');
+      if (!savedPlugins) return false;
+      const plugins = JSON.parse(savedPlugins);
+      return Array.isArray(plugins) && plugins.length > 0;
+    } catch (err) {
+      console.error('检查插件配置失败:', err);
+      return false;
+    }
+  })();
+  
   try {
-    // 创建TG源搜索参数
-    const tgParams: SearchParams = {
-      ...params,
-      src: 'tg'
-    };
+    // 直接使用用户配置的搜索参数（SearchForm已经根据配置设置了正确的src）
+    const userParams: SearchParams = { ...params };
     
-    // 创建ALL源搜索参数
-    const allParams: SearchParams = {
-      ...params,
-      src: 'all'
-    };
-    
-    // 先发起TG源搜索请求
-    search(tgParams)
-      .then(tgResponse => {
+    // 先发起第一次搜索请求
+    search(userParams)
+      .then(firstResponse => {
         
-        if (tgResponse && tgResponse.total !== undefined) {
-          // 使用TG的搜索结果进行显示
-          updateSearchResults(tgResponse);
+        if (firstResponse && firstResponse.total !== undefined) {
+          // 使用第一次搜索结果进行显示
+          updateSearchResults(firstResponse);
           searchTime.value = Date.now() - startTime;
-          // TG搜索完成后，关闭加载状态
+          // 第一次搜索完成后，关闭加载状态
           loading.value = false;
           
-          // TG搜索完成后，再发起第一次ALL源搜索
-          search(allParams)
-            .then(allResponse => {
-              
-              // 记录第一次ALL搜索完成时间
-              const firstAllSearchCompleteTime = Date.now();
-              
-              // 如果ALL源结果比当前结果更多，则更新显示
-              if (allResponse && allResponse.total >= searchResults.total) {
-                updateSearchResults(allResponse);
-              }
-              
-              // 开始第二次ALL源搜索
-              startSecondAllSearch(firstAllSearchCompleteTime);
-            })
-            .catch(error => {
-              console.error('第一次ALL搜索出错:', error);
-              
-              // 即使第一次ALL搜索失败，也继续进行第二次搜索
-              startSecondAllSearch(Date.now());
-            });
+          // 只有启用了插件时，才需要第二次、第三次搜索（插件是异步的）
+          // TG搜索是同步的，第一次就返回完整结果
+          if (hasPlugins) {
+            // 记录第一次搜索完成时间
+            const firstSearchCompleteTime = Date.now();
+            
+            // 开始第二次搜索
+            startSecondAllSearch(firstSearchCompleteTime);
+          } else {
+            // 只有TG，不需要后续搜索，标记搜索完成
+            isActivelySearching.value = false;
+          }
         } else {
-          console.error('TG搜索结果格式不正确:', tgResponse);
+          console.error('第一次搜索结果格式不正确:', firstResponse);
           loading.value = false;
-          
-          // 即使TG搜索失败，也尝试ALL源搜索
-          search(allParams)
-            .then(allResponse => {
-              
-              if (allResponse && allResponse.total !== undefined) {
-                updateSearchResults(allResponse);
-                const firstAllSearchCompleteTime = Date.now();
-                startSecondAllSearch(firstAllSearchCompleteTime);
-              }
-            })
-            .catch(error => {
-              console.error('第一次ALL搜索出错:', error);
-              isActivelySearching.value = false;
-            });
+          isActivelySearching.value = false;
         }
       })
       .catch(error => {
-        console.error('TG搜索出错:', error);
+        console.error('第一次搜索出错:', error);
         loading.value = false;
-        
-        // TG搜索出错时，尝试ALL源搜索
-        search(allParams)
-          .then(allResponse => {
-            
-            if (allResponse && allResponse.total !== undefined) {
-              updateSearchResults(allResponse);
-              const firstAllSearchCompleteTime = Date.now();
-              startSecondAllSearch(firstAllSearchCompleteTime);
-            }
-          })
-          .catch(error => {
-            console.error('第一次ALL搜索出错:', error);
-            isActivelySearching.value = false;
-          });
+        isActivelySearching.value = false;
       });
     
     // 设置一个超时，确保即使搜索很慢，UI也不会一直处于加载状态
@@ -194,97 +169,120 @@ const updateSearchResults = (response: SearchResponse) => {
   }
 };
 
-// 开始第二次ALL源搜索
-const startSecondAllSearch = (firstAllSearchCompleteTime: number) => {
+// 根据用户配置计算正确的src参数
+const calculateSrcForFullSearch = (): 'all' | 'tg' | 'plugin' => {
+  try {
+    const savedChannels = localStorage.getItem('pansou_channels');
+    const savedPlugins = localStorage.getItem('pansou_plugins');
+    
+    const hasChannels = savedChannels && JSON.parse(savedChannels).length > 0;
+    const hasPlugins = savedPlugins && JSON.parse(savedPlugins).length > 0;
+    
+    // 根据完整配置决定src
+    if (!hasChannels && hasPlugins) {
+      return 'plugin';  // 只有插件
+    } else if (hasChannels && !hasPlugins) {
+      return 'tg';      // 只有TG频道
+    } else if (hasChannels && hasPlugins) {
+      return 'all';     // 都有
+    }
+    return 'all';       // 默认
+  } catch (err) {
+    console.error('计算src参数失败:', err);
+    return 'all';
+  }
+};
+
+// 开始第二次搜索
+const startSecondAllSearch = (firstSearchCompleteTime: number) => {
   if (!lastSearchParams.value) return;
   
   isUpdating.value = true;
   isActivelySearching.value = true;
   updateCount.value = 1;
   
-  // 创建ALL源搜索参数
-  const allParams: SearchParams = {
+  // 第二次搜索：根据用户完整配置设置src
+  const userParams: SearchParams = { 
     ...lastSearchParams.value,
-    src: 'all'
+    src: calculateSrcForFullSearch()  // 使用完整配置的src
   };
   
-  // 计算需要等待的时间，确保与第一次ALL搜索至少间隔2秒
+  // 计算需要等待的时间，确保与第一次搜索至少间隔2秒
   const currentTime = Date.now();
-  const timeElapsedSinceFirstAllSearch = currentTime - firstAllSearchCompleteTime;
-  const delayForSecondSearch = Math.max(0, 2000 - timeElapsedSinceFirstAllSearch);
+  const timeElapsedSinceFirstSearch = currentTime - firstSearchCompleteTime;
+  const delayForSecondSearch = Math.max(0, 2000 - timeElapsedSinceFirstSearch);
   
-  // 执行第二次ALL搜索
-  const executeSecondAllSearch = async () => {
+  // 执行第二次搜索
+  const executeSecondSearch = async () => {
     if (!lastSearchParams.value) {
       stopUpdate();
       return;
     }
     
     try {
-      const secondAllSearchStartTime = Date.now();
-      const response = await search(allParams);
+      const response = await search(userParams);
       
       // 更新结果
       if (response && response.total >= searchResults.total) {
         updateSearchResults(response);
       }
       
-      // 记录第二次ALL搜索完成时间
-      const secondAllSearchCompleteTime = Date.now();
+      // 记录第二次搜索完成时间
+      const secondSearchCompleteTime = Date.now();
       
-      // 开始第三次ALL源搜索
-      startThirdAllSearch(secondAllSearchCompleteTime);
+      // 开始第三次搜索
+      startThirdAllSearch(secondSearchCompleteTime);
     } catch (error) {
-      console.error('第二次ALL搜索出错:', error);
+      console.error('第二次搜索出错:', error);
       stopUpdate();
     }
   };
   
-  // 设置定时器，在适当的时间执行第二次ALL搜索
-  secondSearchTimeout.value = window.setTimeout(executeSecondAllSearch, delayForSecondSearch);
+  // 设置定时器，在适当的时间执行第二次搜索
+  secondSearchTimeout.value = window.setTimeout(executeSecondSearch, delayForSecondSearch);
 };
 
-// 开始第三次ALL源搜索
-const startThirdAllSearch = (secondAllSearchCompleteTime: number) => {
+// 开始第三次搜索
+const startThirdAllSearch = (secondSearchCompleteTime: number) => {
   if (!lastSearchParams.value) return;
   
   updateCount.value = 2;
   
-  // 创建ALL源搜索参数
-  const allParams: SearchParams = {
+  // 第三次搜索：根据用户完整配置设置src
+  const userParams: SearchParams = { 
     ...lastSearchParams.value,
-    src: 'all'
+    src: calculateSrcForFullSearch()  // 使用完整配置的src
   };
   
-  // 计算需要等待的时间，确保与第二次ALL搜索至少间隔3秒
+  // 计算需要等待的时间，确保与第二次搜索至少间隔3秒
   const currentTime = Date.now();
-  const timeElapsedSinceSecondAllSearch = currentTime - secondAllSearchCompleteTime;
-  const delayForThirdSearch = Math.max(0, 3000 - timeElapsedSinceSecondAllSearch);
+  const timeElapsedSinceSecondSearch = currentTime - secondSearchCompleteTime;
+  const delayForThirdSearch = Math.max(0, 3000 - timeElapsedSinceSecondSearch);
   
-  // 执行第三次ALL搜索
-  const executeThirdAllSearch = async () => {
+  // 执行第三次搜索
+  const executeThirdSearch = async () => {
     if (!lastSearchParams.value) {
       stopUpdate();
       return;
     }
     
     try {
-      const response = await search(allParams);
+      const response = await search(userParams);
       
       // 更新结果
       if (response && response.total >= searchResults.total) {
         updateSearchResults(response);
       }
     } catch (error) {
-      console.error('第三次ALL搜索出错:', error);
+      console.error('第三次搜索出错:', error);
     } finally {
       // 完成所有搜索，停止更新
       stopUpdate();
     }
   };
   
-  // 设置定时器，在适当的时间执行第三次ALL搜索
-  thirdSearchTimeout.value = window.setTimeout(executeThirdAllSearch, delayForThirdSearch);
+  // 设置定时器，在适当的时间执行第三次搜索
+  thirdSearchTimeout.value = window.setTimeout(executeThirdSearch, delayForThirdSearch);
 };
 
 // 停止后台更新
@@ -359,16 +357,70 @@ const handleLogout = async () => {
   }
 };
 
-// 组件卸载时清除定时器
+// 检查QQPD插件是否显示（后端支持时默认显示，除非用户主动禁用）
+const checkQQPDPlugin = async () => {
+  try {
+    // 1. 检查后端是否支持QQPD
+    const health = await getHealth();
+    const backendSupportsQQPD = health.plugins?.includes('qqpd') || false;
+    
+    // 2. 如果后端不支持，直接隐藏
+    if (!backendSupportsQQPD) {
+      isQQPDEnabled.value = false;
+      return;
+    }
+    
+    // 3. 检查用户配置
+    try {
+      const savedPlugins = localStorage.getItem('pansou_plugins');
+      
+      if (savedPlugins === null) {
+        // 用户从未保存过配置，默认启用（后端支持即显示）
+        isQQPDEnabled.value = true;
+      } else {
+        // 用户保存过配置，按用户配置来
+        const plugins = JSON.parse(savedPlugins);
+        isQQPDEnabled.value = Array.isArray(plugins) && plugins.includes('qqpd');
+      }
+    } catch (err) {
+      console.error('读取用户插件配置失败:', err);
+      // 解析失败时，默认启用
+      isQQPDEnabled.value = true;
+    }
+  } catch (error) {
+    console.error('获取插件状态失败:', error);
+    isQQPDEnabled.value = false;
+  }
+};
+
+// 监听localStorage变化，当用户配置改变时更新QQPD按钮显示
+const handleStorageChange = (e: StorageEvent) => {
+  // 只关心插件配置的变化
+  if (e.key === 'pansou_plugins') {
+    checkQQPDPlugin();
+  }
+};
+
+// 自定义事件：当用户在配置页保存设置时触发
+const handleConfigSaved = () => {
+  checkQQPDPlugin();
+};
+
+// 组件加载时初始化
 onMounted(() => {
   checkAuth();
+  checkQQPDPlugin();
   window.addEventListener('auth:required', handleAuthRequired);
+  window.addEventListener('storage', handleStorageChange);
+  window.addEventListener('config:saved', handleConfigSaved);
 });
 
 onUnmounted(() => {
-  // 确保在组件卸载时清理所有定时器
+  // 确保在组件卸载时清理所有定时器和事件监听
   stopUpdate();
   window.removeEventListener('auth:required', handleAuthRequired);
+  window.removeEventListener('storage', handleStorageChange);
+  window.removeEventListener('config:saved', handleConfigSaved);
 });
 </script>
 
@@ -398,29 +450,75 @@ onUnmounted(() => {
         </div>
         
         <!-- 导航菜单 -->
-        <nav class="flex items-center gap-2" v-if="currentPage === 'search'">
+        <nav class="flex items-center gap-2">
           <button 
             @click="switchToStatus"
             class="nav-button"
+            :class="{ 'active': currentPage === 'status' }"
+            title="配置"
           >
-            <span class="nav-icon">📊</span>
-            状态
+            <span class="nav-icon">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+            </span>
+            <span class="nav-text">配置</span>
           </button>
           <button 
             @click="switchToDocs"
             class="nav-button"
+            :class="{ 'active': currentPage === 'docs' }"
+            title="API文档"
           >
-            <span class="nav-icon">📖</span>
-            API文档
+            <span class="nav-icon">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <!-- 文档外框 -->
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M14 2v6h6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- API文字 -->
+                <text x="12" y="15" font-size="6" font-weight="bold" text-anchor="middle" fill="currentColor" font-family="Arial, sans-serif">API</text>
+              </svg>
+            </span>
+            <span class="nav-text">API</span>
+          </button>
+          <button 
+            v-if="isQQPDEnabled"
+            @click="switchToQQPD"
+            class="nav-button"
+            :class="{ 'active': currentPage === 'qqpd' }"
+            title="QQ频道管理"
+          >
+            <span class="nav-icon">
+              <svg class="w-5 h-5" viewBox="0 0 200 200" fill="currentColor">
+                <!-- QQ频道官方logo -->
+                <circle cx="100" cy="100" r="95" fill="none" stroke="currentColor" stroke-width="8"/>
+                <!-- 左竖线 -->
+                <path d="M70 50 L60 150" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
+                <!-- 右竖线 -->
+                <path d="M130 50 L120 150" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
+                <!-- 上横线 -->
+                <path d="M45 80 L155 80" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
+                <!-- 下横线（较短，为三角留空间） -->
+                <path d="M45 120 L130 120" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
+                <!-- 右下角三角形 -->
+                <path d="M145 110 L145 145 L110 145 Z" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="nav-text">QQ频道</span>
           </button>
           <button 
             v-if="isAuthenticated"
             @click="handleLogout"
             class="nav-button logout-button"
-            :title="'当前用户: ' + currentUsername"
+            :title="'退出登录 (当前用户: ' + currentUsername + ')'"
           >
-            <span class="nav-icon">🚪</span>
-            退出
+            <span class="nav-icon">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+              </svg>
+            </span>
+            <span class="nav-text">退出</span>
           </button>
         </nav>
       </div>
@@ -472,14 +570,19 @@ onUnmounted(() => {
         </div>
       </div>
       
-      <!-- 状态页面 -->
+      <!-- 配置页面 -->
       <div v-else-if="currentPage === 'status'" class="status-page">
-        <ApiStatus />
+        <SearchConfig />
       </div>
       
       <!-- API文档页面 -->
       <div v-else-if="currentPage === 'docs'" class="docs-page">
         <ApiDocs />
+      </div>
+      
+      <!-- QQ频道管理页面 -->
+      <div v-else-if="currentPage === 'qqpd'" class="qqpd-page">
+        <QQPDManager />
       </div>
     </main>
     
@@ -538,6 +641,12 @@ onUnmounted(() => {
   border-color: hsl(var(--accent));
 }
 
+.nav-button.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
 .logout-button {
   border-color: hsl(0, 84%, 60%);
   color: hsl(0, 84%, 60%);
@@ -559,7 +668,14 @@ onUnmounted(() => {
 
 
 .nav-icon {
-  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-text {
+  white-space: nowrap;
 }
 
 /* 页面切换动画 */
@@ -584,13 +700,17 @@ onUnmounted(() => {
     padding-right: 1rem;
   }
   
+  /* 移动端按钮样式 - 只显示图标 */
   .nav-button {
-    padding: 0.375rem 0.75rem;
+    padding: 0.5rem;
     font-size: 0.8rem;
+    min-width: 2.5rem;
+    justify-content: center;
   }
   
-  .nav-icon {
-    font-size: 0.875rem;
+  /* 移动端隐藏按钮文字 */
+  .nav-text {
+    display: none;
   }
 }
 

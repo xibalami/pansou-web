@@ -65,4 +65,7 @@ export interface LoginResponse {
 export interface AuthStatus {
   enabled: boolean;
   authenticated: boolean;
-} 
+}
+
+// 导出QQPD相关类型
+export * from './qqpd' 
