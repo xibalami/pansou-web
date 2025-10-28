@@ -9,6 +9,8 @@ import SearchConfig from '@/components/SearchConfig.vue';
 import ApiDocs from '@/components/ApiDocs.vue';
 import LoginDialog from '@/components/LoginDialog.vue';
 import QQPDManager from '@/components/QQPDManager.vue';
+import AccountCenter from '@/components/AccountCenter.vue';
+import GyingManager from '@/components/GyingManager.vue';
 
 // 后端健康状态缓存（应用启动时获取一次）
 const backendHealth = ref<HealthStatus | null>(null);
@@ -41,7 +43,7 @@ const hasSearched = ref(false);
 const isActivelySearching = ref(false);
 
 // 当前页面状态
-const currentPage = ref<'search' | 'status' | 'docs' | 'qqpd'>('search');
+const currentPage = ref<'search' | 'status' | 'docs' | 'accounts' | 'qqpd' | 'gying'>('search');
 
 // 登录状态
 const showLogin = ref(false);
@@ -50,6 +52,14 @@ const currentUsername = ref('');
 
 // QQPD插件状态
 const isQQPDEnabled = ref(false);
+
+// Gying插件状态
+const isGyingEnabled = ref(false);
+
+// 检查是否有需要账号管理的服务
+const hasAccountServices = computed(() => {
+  return isQQPDEnabled.value || isGyingEnabled.value;
+});
 
 // 页面切换
 const switchToStatus = () => {
@@ -60,8 +70,25 @@ const switchToDocs = () => {
   currentPage.value = 'docs';
 };
 
+const switchToAccounts = () => {
+  currentPage.value = 'accounts';
+};
+
 const switchToQQPD = () => {
   currentPage.value = 'qqpd';
+};
+
+const switchToGying = () => {
+  currentPage.value = 'gying';
+};
+
+// 从账号中心导航到具体服务
+const handleAccountNavigate = (service: 'qqpd' | 'gying') => {
+  if (service === 'qqpd') {
+    switchToQQPD();
+  } else if (service === 'gying') {
+    switchToGying();
+  }
 };
 
 
@@ -535,17 +562,54 @@ const checkQQPDPlugin = () => {
   }
 };
 
-// 监听localStorage变化，当用户配置改变时更新QQPD按钮显示
+// 检查Gying插件是否启用
+const checkGyingPlugin = () => {
+  try {
+    // 1. 检查后端是否支持Gying（使用缓存的健康状态）
+    const backendSupportsGying = backendHealth.value?.plugins?.includes('gying') || false;
+    
+    // 2. 如果后端不支持，直接隐藏
+    if (!backendSupportsGying) {
+      isGyingEnabled.value = false;
+      return;
+    }
+    
+    // 3. 检查用户配置
+    try {
+      const savedPlugins = localStorage.getItem('pansou_plugins');
+      
+      if (savedPlugins === null) {
+        // 用户从未保存过配置，默认启用（后端支持即显示）
+        isGyingEnabled.value = true;
+      } else {
+        // 用户保存过配置，按用户配置来
+        const plugins = JSON.parse(savedPlugins);
+        isGyingEnabled.value = Array.isArray(plugins) && plugins.includes('gying');
+      }
+    } catch (err) {
+      console.error('读取用户插件配置失败:', err);
+      // 解析失败时，默认启用
+      isGyingEnabled.value = true;
+    }
+  } catch (error) {
+    console.error('检查Gying插件失败:', error);
+    isGyingEnabled.value = false;
+  }
+};
+
+// 监听localStorage变化，当用户配置改变时更新插件状态
 const handleStorageChange = (e: StorageEvent) => {
   // 只关心插件配置的变化
   if (e.key === 'pansou_plugins') {
     checkQQPDPlugin();
+    checkGyingPlugin();
   }
 };
 
 // 自定义事件：当用户在配置页保存设置时触发
 const handleConfigSaved = () => {
   checkQQPDPlugin();
+  checkGyingPlugin();
 };
 
 // 组件加载时初始化
@@ -556,6 +620,7 @@ onMounted(async () => {
   // 然后初始化其他状态
   checkAuth();
   checkQQPDPlugin();
+  checkGyingPlugin();
   
   // 监听事件
   window.addEventListener('auth:required', handleAuthRequired);
@@ -631,29 +696,18 @@ onUnmounted(() => {
             <span class="nav-text">API</span>
           </button>
           <button 
-            v-if="isQQPDEnabled"
-            @click="switchToQQPD"
+            v-if="hasAccountServices"
+            @click="switchToAccounts"
             class="nav-button"
-            :class="{ 'active': currentPage === 'qqpd' }"
-            title="QQ频道管理"
+            :class="{ 'active': currentPage === 'accounts' || currentPage === 'qqpd' || currentPage === 'gying' }"
+            title="账号管理"
           >
             <span class="nav-icon">
-              <svg class="w-5 h-5" viewBox="0 0 200 200" fill="currentColor">
-                <!-- QQ频道官方logo -->
-                <circle cx="100" cy="100" r="95" fill="none" stroke="currentColor" stroke-width="8"/>
-                <!-- 左竖线 -->
-                <path d="M70 50 L60 150" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
-                <!-- 右竖线 -->
-                <path d="M130 50 L120 150" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
-                <!-- 上横线 -->
-                <path d="M45 80 L155 80" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
-                <!-- 下横线（较短，为三角留空间） -->
-                <path d="M45 120 L130 120" stroke="currentColor" stroke-width="18" stroke-linecap="round"/>
-                <!-- 右下角三角形 -->
-                <path d="M145 110 L145 145 L110 145 Z" fill="currentColor"/>
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
               </svg>
             </span>
-            <span class="nav-text">QQ频道</span>
+            <span class="nav-text">账号</span>
           </button>
           <button 
             v-if="isAuthenticated"
@@ -729,9 +783,22 @@ onUnmounted(() => {
         <ApiDocs />
       </div>
       
+      <!-- 账号管理中心页面 -->
+      <div v-else-if="currentPage === 'accounts'" class="accounts-page">
+        <AccountCenter 
+          :backend-health="backendHealth"
+          @navigate="handleAccountNavigate"
+        />
+      </div>
+      
       <!-- QQ频道管理页面 -->
       <div v-else-if="currentPage === 'qqpd'" class="qqpd-page">
-        <QQPDManager />
+        <QQPDManager @back-to-center="switchToAccounts" />
+      </div>
+      
+      <!-- 观影管理页面 -->
+      <div v-else-if="currentPage === 'gying'" class="gying-page">
+        <GyingManager @back-to-center="switchToAccounts" />
       </div>
     </main>
     

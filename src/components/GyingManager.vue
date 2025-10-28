@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import * as qqpdApi from '@/api/qqpd'
-import type { QQPDStatus, QQPDSearchResult } from '@/types/qqpd'
+import * as gyingApi from '@/api/gying'
+import type { GyingStatus, GyingSearchResult } from '@/types/gying'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
@@ -16,9 +16,9 @@ const emit = defineEmits<{
 // ============================================================
 
 interface SavedUser {
-  qq_number: string
+  username: string
   hash: string
-  qq_masked: string
+  username_masked: string
   last_login: string
 }
 
@@ -28,7 +28,7 @@ const selectedUser = ref<SavedUser | null>(null)
 
 // 从localStorage加载用户列表
 const loadSavedUsers = () => {
-  const stored = localStorage.getItem('qqpd_users')
+  const stored = localStorage.getItem('gying_users')
   if (stored) {
     try {
       savedUsers.value = JSON.parse(stored)
@@ -45,15 +45,17 @@ const loadSavedUsers = () => {
 
 // 保存用户列表
 const saveSavedUsers = () => {
-  localStorage.setItem('qqpd_users', JSON.stringify(savedUsers.value))
+  localStorage.setItem('gying_users', JSON.stringify(savedUsers.value))
+  // 触发存储变化事件，通知AccountCenter更新
+  window.dispatchEvent(new StorageEvent('storage', { key: 'gying_users' }))
 }
 
 // 添加新用户到列表
-const addUserToList = (qqNumber: string, hash: string, qqMasked: string) => {
+const addUserToList = (username: string, hash: string, usernameMasked: string) => {
   const user: SavedUser = {
-    qq_number: qqNumber,
+    username: username,
     hash: hash,
-    qq_masked: qqMasked,
+    username_masked: usernameMasked,
     last_login: new Date().toISOString()
   }
   
@@ -75,36 +77,36 @@ const removeUser = (hash: string) => {
 }
 
 // ============================================================
-// 添加QQ号界面
+// 添加用户界面
 // ============================================================
 
-const qqNumber = ref('')
+const username = ref('')
 const generatingHash = ref(false)
 
-const handleAddQQ = async () => {
-  if (!qqNumber.value.trim()) {
-    showAlertMessage('请输入QQ号', 'error')
+const handleAddUser = async () => {
+  if (!username.value.trim()) {
+    showAlertMessage('请输入用户名', 'error')
     return
   }
   
   generatingHash.value = true
   
   try {
-    const hash = await qqpdApi.getHashByQQNumber(qqNumber.value.trim())
+    const hash = await gyingApi.getHashByUsername(username.value.trim())
     
     // 切换到管理界面
     selectedUser.value = {
-      qq_number: qqNumber.value.trim(),
+      username: username.value.trim(),
       hash: hash,
-      qq_masked: '', // 登录成功后更新
+      username_masked: '', // 登录成功后更新
       last_login: new Date().toISOString()
     }
     
     currentHash.value = hash
     currentView.value = 'manage'
     
-    // 只加载一次状态，不启动轮询
-    await loadStatus(true)
+    // 加载状态
+    await loadStatus()
   } catch (error) {
     console.error('获取hash失败:', error)
     showAlertMessage('获取hash失败', 'error')
@@ -121,22 +123,21 @@ const handleSelectUser = (user: SavedUser) => {
   selectedUser.value = user
   currentHash.value = user.hash
   currentView.value = 'manage'
-  // 只加载一次状态，不启动轮询
-  loadStatus(true)
+  loadStatus()
 }
 
 const handleBackToList = () => {
-  stopAllPolling()
   selectedUser.value = null
   currentHash.value = ''
   currentView.value = savedUsers.value.length > 0 ? 'list' : 'add'
-  qqNumber.value = ''
-  isEditingChannels.value = false
+  username.value = ''
+  loginUsername.value = ''
+  loginPassword.value = ''
 }
 
 const handleShowAddForm = () => {
   currentView.value = 'add'
-  qqNumber.value = ''
+  username.value = ''
 }
 
 // ============================================================
@@ -145,37 +146,35 @@ const handleShowAddForm = () => {
 
 const currentHash = ref<string>('')
 
-const status = ref<QQPDStatus>({
+const status = ref<GyingStatus>({
   hash: '',
   logged_in: false,
   status: 'pending',
-  qq_masked: '',
+  username_masked: '',
   login_time: '',
   expire_time: '',
-  expires_in_days: 0,
-  channels: [],
-  channel_count: 0
+  expires_in_days: 0
 })
 
-const qrcodeImage = ref<string>('')
-const channelsText = ref<string>('')
 const searchKeyword = ref<string>('')
-const searchResults = ref<QQPDSearchResult[]>([])
+const searchResults = ref<GyingSearchResult[]>([])
 const searching = ref(false)
-
-// 只保留登录检查的定时器（未登录时需要）
-let loginCheckInterval: number | null = null
 
 const showAlert = ref(false)
 const alertMessage = ref('')
 const alertType = ref<'success' | 'error'>('success')
 
+// 登录表单
+const loginUsername = ref<string>('')
+const loginPassword = ref<string>('')
+const loggingIn = ref(false)
+
 // ============================================================
 // 计算属性
 // ============================================================
 
-const qqFirstChar = computed(() => {
-  return status.value.qq_masked?.[0] || selectedUser.value?.qq_number?.[0] || 'Q'
+const usernameFirstChar = computed(() => {
+  return status.value.username_masked?.[0] || selectedUser.value?.username?.[0] || 'G'
 })
 
 const isLoggedIn = computed(() => {
@@ -190,52 +189,28 @@ onMounted(() => {
   loadSavedUsers()
 })
 
-onUnmounted(() => {
-  stopAllPolling()
-})
-
 // ============================================================
 // 状态管理
 // ============================================================
 
-// 标记用户是否正在编辑频道
-const isEditingChannels = ref(false)
-
-const loadStatus = async (forceUpdateChannels = false) => {
+const loadStatus = async () => {
   if (!currentHash.value) return
   
   try {
-    const response = await qqpdApi.getStatus(currentHash.value)
+    const response = await gyingApi.getStatus(currentHash.value)
     
     if (response.success && response.data) {
       status.value = response.data
       
-      // 如果登录成功，更新用户列表中的qq_masked
-      if (response.data.logged_in && response.data.qq_masked && selectedUser.value) {
-        selectedUser.value.qq_masked = response.data.qq_masked
+      // 如果登录成功，更新用户列表中的username_masked
+      if (response.data.logged_in && response.data.username_masked && selectedUser.value) {
+        selectedUser.value.username_masked = response.data.username_masked
         selectedUser.value.last_login = new Date().toISOString()
         addUserToList(
-          selectedUser.value.qq_number,
+          selectedUser.value.username,
           selectedUser.value.hash,
-          response.data.qq_masked
+          response.data.username_masked
         )
-      }
-      
-      // 更新二维码（只在未登录时需要）
-      if (!response.data.logged_in && response.data.qrcode_base64) {
-        qrcodeImage.value = response.data.qrcode_base64
-      }
-      
-      // 更新频道列表（只在未编辑或强制更新时）
-      if (forceUpdateChannels || !isEditingChannels.value) {
-        channelsText.value = response.data.channels.join('\n')
-      }
-      
-      // 登录状态处理
-      if (!response.data.logged_in && !loginCheckInterval) {
-        startLoginPolling()
-      } else if (response.data.logged_in && loginCheckInterval) {
-        stopLoginPolling()
       }
     }
   } catch (error) {
@@ -243,59 +218,41 @@ const loadStatus = async (forceUpdateChannels = false) => {
   }
 }
 
-// 不再需要定时轮询状态，只在特定时机调用
-const stopAllPolling = () => {
-  stopLoginPolling()
-}
-
 // ============================================================
 // 登录管理
 // ============================================================
 
-const startLoginPolling = () => {
-  if (loginCheckInterval) return
-  loginCheckInterval = window.setInterval(checkLoginStatus, 2000)
-}
-
-const stopLoginPolling = () => {
-  if (loginCheckInterval) {
-    clearInterval(loginCheckInterval)
-    loginCheckInterval = null
-  }
-}
-
-const checkLoginStatus = async () => {
+const handleLogin = async () => {
   if (!currentHash.value) return
+  if (!loginUsername.value.trim() || !loginPassword.value.trim()) {
+    showAlertMessage('请输入用户名和密码', 'error')
+    return
+  }
+  
+  loggingIn.value = true
   
   try {
-    const response = await qqpdApi.checkLogin(currentHash.value)
-    
-    if (response.success && response.data.login_status === 'success') {
-      stopLoginPolling()
-      showAlertMessage('登录成功！', 'success')
-      // 登录成功后重新加载状态
-      await loadStatus(true)
-    }
-  } catch (error) {
-    console.error('检查登录失败:', error)
-  }
-}
-
-const handleRefreshQRCode = async () => {
-  if (!currentHash.value) return
-  
-  try {
-    const response = await qqpdApi.refreshQRCode(currentHash.value)
+    const response = await gyingApi.login(
+      currentHash.value,
+      loginUsername.value.trim(),
+      loginPassword.value.trim()
+    )
     
     if (response.success) {
-      showAlertMessage('二维码已刷新', 'success')
-      // 刷新二维码后重新加载状态
-      await loadStatus(true)
-      startLoginPolling()
+      showAlertMessage('登录成功！', 'success')
+      // 登录成功后重新加载状态
+      await loadStatus()
+      // 清空密码
+      loginPassword.value = ''
+    } else {
+      showAlertMessage(response.message || '登录失败', 'error')
     }
-  } catch (error) {
-    console.error('刷新二维码失败:', error)
-    showAlertMessage('刷新二维码失败', 'error')
+  } catch (error: any) {
+    console.error('登录失败:', error)
+    const message = error.response?.data?.message || '登录失败'
+    showAlertMessage(message, 'error')
+  } finally {
+    loggingIn.value = false
   }
 }
 
@@ -304,12 +261,12 @@ const handleLogout = async () => {
   if (!confirm('确定要退出登录吗？')) return
   
   try {
-    const response = await qqpdApi.logout(currentHash.value)
+    const response = await gyingApi.logout(currentHash.value)
     
     if (response.success) {
       showAlertMessage('已退出登录', 'success')
       // 退出登录后重新加载状态
-      await loadStatus(true)
+      await loadStatus()
     }
   } catch (error) {
     console.error('退出登录失败:', error)
@@ -321,50 +278,10 @@ const handleLogout = async () => {
 const handleDeleteAccount = () => {
   if (!selectedUser.value) return
   
-  if (confirm(`确定要删除账号 ${selectedUser.value.qq_masked || selectedUser.value.qq_number} 吗？\n\n这将删除本地保存的配置信息。`)) {
+  if (confirm(`确定要删除账号 ${selectedUser.value.username_masked || selectedUser.value.username} 吗？\n\n这将删除本地保存的配置信息。`)) {
     removeUser(selectedUser.value.hash)
     handleBackToList()
     showAlertMessage('账号已删除', 'success')
-  }
-}
-
-// ============================================================
-// 频道管理
-// ============================================================
-
-const handleSaveChannels = async () => {
-  if (!currentHash.value) return
-  
-  const channels = channelsText.value
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-  
-  if (channels.length === 0) {
-    showAlertMessage('请至少添加一个频道', 'error')
-    return
-  }
-  
-  try {
-    isEditingChannels.value = false  // 保存时标记为非编辑状态
-    const response = await qqpdApi.setChannels(currentHash.value, channels)
-    
-    if (response.success) {
-      const count = response.data.channel_count
-      const invalidCount = response.data.invalid_channels?.length || 0
-      
-      let msg = `已保存 ${count} 个频道`
-      if (invalidCount > 0) {
-        msg += `，${invalidCount} 个无效`
-      }
-      
-      showAlertMessage(msg, 'success')
-      // 保存成功后重新加载状态，强制更新频道列表
-      await loadStatus(true)
-    }
-  } catch (error) {
-    console.error('保存频道失败:', error)
-    showAlertMessage('保存频道失败', 'error')
   }
 }
 
@@ -384,7 +301,7 @@ const handleTestSearch = async () => {
   searchResults.value = []
   
   try {
-    const response = await qqpdApi.testSearch(currentHash.value, searchKeyword.value.trim(), 20)
+    const response = await gyingApi.testSearch(currentHash.value, searchKeyword.value.trim(), 20)
     
     if (response.success) {
       searchResults.value = response.data.results || []
@@ -480,7 +397,7 @@ const copyHashToClipboard = async () => {
 </script>
 
 <template>
-  <div class="qqpd-manager">
+  <div class="gying-manager">
     <!-- Alert提示 -->
     <Transition name="slide-fade">
       <div v-if="showAlert" :class="['alert', `alert-${alertType}`]">
@@ -503,8 +420,8 @@ const copyHashToClipboard = async () => {
       </button>
       
       <div class="header-section mb-8">
-        <h1 class="text-3xl font-bold mb-2">QQ频道管理</h1>
-        <p class="text-muted-foreground">管理你的QQ频道搜索配置</p>
+        <h1 class="text-3xl font-bold mb-2">观影管理</h1>
+        <p class="text-muted-foreground">管理你的观影账号配置</p>
       </div>
       
       <!-- 用户卡片列表 -->
@@ -517,13 +434,25 @@ const copyHashToClipboard = async () => {
         >
           <div class="p-6">
             <div class="flex items-center gap-4 mb-4">
-              <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold">
-                {{ user.qq_masked?.[0] || user.qq_number?.[0] || 'Q' }}
+              <div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white text-xl font-bold">
+                <span v-if="user.username_masked || user.username">
+                  {{ user.username_masked?.[0] || user.username?.[0] || 'G' }}
+                </span>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" class="w-6 h-6">
+                  <rect x="2" y="3" width="20" height="18" rx="2" stroke-width="2"/>
+                  <line x1="2" y1="7" x2="6" y2="7" stroke-width="2"/>
+                  <line x1="2" y1="12" x2="6" y2="12" stroke-width="2"/>
+                  <line x1="2" y1="17" x2="6" y2="17" stroke-width="2"/>
+                  <line x1="18" y1="7" x2="22" y2="7" stroke-width="2"/>
+                  <line x1="18" y1="12" x2="22" y2="12" stroke-width="2"/>
+                  <line x1="18" y1="17" x2="22" y2="17" stroke-width="2"/>
+                  <polygon points="10,9 10,15 15,12" fill="currentColor"/>
+                </svg>
               </div>
               <div class="flex-1">
-                <div class="font-medium">{{ user.qq_masked || '未登录' }}</div>
+                <div class="font-medium">{{ user.username_masked || '未登录' }}</div>
                 <div class="text-xs text-muted-foreground">
-                  {{ user.last_login ? '最近登录: ' + formatDateTime(user.last_login) : 'QQ ' + user.qq_number }}
+                  {{ user.last_login ? '最近登录: ' + formatDateTime(user.last_login) : '用户: ' + user.username }}
                 </div>
               </div>
             </div>
@@ -544,14 +473,14 @@ const copyHashToClipboard = async () => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
             </div>
-            <div class="text-primary font-medium">添加QQ账号</div>
-            <div class="text-xs text-muted-foreground">配置新的QQ频道搜索</div>
+            <div class="text-primary font-medium">添加账号</div>
+            <div class="text-xs text-muted-foreground">配置新的观影账号</div>
           </div>
         </Card>
       </div>
     </div>
     
-    <!-- 添加QQ号视图 -->
+    <!-- 添加用户视图 -->
     <div v-else-if="currentView === 'add'" class="add-view">
       <!-- 返回按钮 -->
       <button 
@@ -569,27 +498,34 @@ const copyHashToClipboard = async () => {
         <Card>
           <div class="p-8">
             <div class="text-center mb-6">
-              <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+              <div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="w-8 h-8">
+                  <rect x="2" y="3" width="20" height="18" rx="2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="2" y1="7" x2="6" y2="7" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="2" y1="12" x2="6" y2="12" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="2" y1="17" x2="6" y2="17" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="18" y1="7" x2="22" y2="7" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="18" y1="12" x2="22" y2="12" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="18" y1="17" x2="22" y2="17" stroke-width="2" stroke-linecap="round"/>
+                  <polygon points="10,9 10,15 15,12" fill="currentColor" stroke="none"/>
                 </svg>
               </div>
-              <h2 class="text-2xl font-bold mb-2">添加QQ账号</h2>
-              <p class="text-muted-foreground text-sm">输入QQ号开始配置频道搜索</p>
+              <h2 class="text-2xl font-bold mb-2">添加观影账号</h2>
+              <p class="text-muted-foreground text-sm">输入用户名开始配置</p>
             </div>
             
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium mb-2">QQ号</label>
+                <label class="block text-sm font-medium mb-2">用户名</label>
                 <Input 
-                  v-model="qqNumber" 
-                  placeholder="请输入你的QQ号" 
+                  v-model="username" 
+                  placeholder="请输入你的用户名" 
                   type="text"
-                  @keyup.enter="handleAddQQ"
+                  @keyup.enter="handleAddUser"
                   class="text-center text-lg"
                 />
                 <p class="text-xs text-muted-foreground mt-2">
-                  系统会生成专属hash保护你的隐私，QQ号不会被存储
+                  系统会生成专属hash保护你的隐私，用户名不会被存储
                 </p>
               </div>
               
@@ -603,8 +539,8 @@ const copyHashToClipboard = async () => {
                   返回
                 </Button>
                 <Button 
-                  @click="handleAddQQ" 
-                  :disabled="!qqNumber.trim() || generatingHash"
+                  @click="handleAddUser" 
+                  :disabled="!username.trim() || generatingHash"
                   class="flex-1 h-12"
                 >
                   {{ generatingHash ? '获取中...' : '确定' }}
@@ -637,13 +573,13 @@ const copyHashToClipboard = async () => {
       </div>
       
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- 左侧：登录状态 + 频道管理 -->
+        <!-- 左侧：登录状态 -->
         <div class="space-y-6 lg:col-span-1">
           <!-- 登录状态 -->
           <Card>
             <div class="p-6">
               <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                <span>📱</span>
+                <span>🔐</span>
                 <span>登录状态</span>
               </h3>
               
@@ -658,8 +594,8 @@ const copyHashToClipboard = async () => {
                     </div>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-muted-foreground">QQ号</span>
-                    <span>{{ status.qq_masked }}</span>
+                    <span class="text-muted-foreground">用户名</span>
+                    <span>{{ status.username_masked }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-muted-foreground">登录时间</span>
@@ -678,65 +614,32 @@ const copyHashToClipboard = async () => {
               
               <!-- 未登录 -->
               <div v-else class="space-y-4">
-                <div class="flex flex-col items-center gap-3">
-                  <div class="qrcode-wrapper">
-                    <img 
-                      v-if="qrcodeImage" 
-                      :src="qrcodeImage" 
-                      alt="登录二维码"
-                      class="qrcode-image"
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-sm font-medium mb-2">用户名</label>
+                    <Input 
+                      v-model="loginUsername" 
+                      placeholder="输入用户名"
+                      @keyup.enter="handleLogin"
                     />
-                    <div v-else class="qrcode-placeholder">
-                      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                    </div>
                   </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium mb-1">扫码登录</p>
-                    <p class="text-xs text-muted-foreground">使用手机QQ扫描二维码</p>
+                  <div>
+                    <label class="block text-sm font-medium mb-2">密码</label>
+                    <Input 
+                      v-model="loginPassword" 
+                      type="password"
+                      placeholder="输入密码"
+                      @keyup.enter="handleLogin"
+                    />
                   </div>
-                  <Button @click="handleRefreshQRCode" variant="outline" size="sm" class="w-full">
-                    刷新二维码
+                  <Button 
+                    @click="handleLogin" 
+                    :disabled="loggingIn || !loginUsername.trim() || !loginPassword.trim()"
+                    class="w-full login-button"
+                  >
+                    {{ loggingIn ? '登录中...' : '登录' }}
                   </Button>
                 </div>
-              </div>
-            </div>
-          </Card>
-          
-          <!-- 频道管理 -->
-          <Card>
-            <div class="p-6">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold flex items-center gap-2">
-                  <span>📋</span>
-                  <span>频道管理</span>
-                  <span class="text-sm text-muted-foreground font-normal">({{ status.channel_count }} 个)</span>
-                </h3>
-              </div>
-              
-              <div v-if="!isLoggedIn" class="text-center py-8 text-muted-foreground">
-                <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                </svg>
-                <p>请先登录后配置频道</p>
-              </div>
-              
-              <div v-else class="space-y-3">
-                <div class="text-sm text-muted-foreground">
-                  每行一个频道号或链接，支持自动识别
-                </div>
-                <textarea 
-                  v-model="channelsText" 
-                  rows="10"
-                  class="channel-textarea"
-                  placeholder="pd97631607
-languan8K115
-https://pd.qq.com/g/m250319e25"
-                  @focus="isEditingChannels = true"
-                  @blur="isEditingChannels = false"
-                />
-                <Button @click="handleSaveChannels" class="save-channels-button">
-                  💾 保存配置
-                </Button>
               </div>
             </div>
           </Card>
@@ -784,7 +687,7 @@ https://pd.qq.com/g/m250319e25"
                       获取状态
                     </summary>
                     <div class="mt-2 p-3 bg-muted/50 rounded-lg">
-                      <pre class="text-xs overflow-x-auto"><code>curl -X POST http://localhost:8888/qqpd/{{ currentHash.slice(0, 16) }}... \
+                      <pre class="text-xs overflow-x-auto"><code>curl -X POST http://localhost:8888/gying/{{ currentHash.slice(0, 16) }}... \
   -H "Content-Type: application/json" \
   -d '{"action": "get_status"}'</code></pre>
                     </div>
@@ -792,12 +695,12 @@ https://pd.qq.com/g/m250319e25"
                   
                   <details class="api-detail">
                     <summary class="cursor-pointer text-sm p-2 hover:bg-muted/50 rounded transition-colors">
-                      设置频道
+                      登录
                     </summary>
                     <div class="mt-2 p-3 bg-muted/50 rounded-lg">
-                      <pre class="text-xs overflow-x-auto"><code>curl -X POST http://localhost:8888/qqpd/{{ currentHash.slice(0, 16) }}... \
+                      <pre class="text-xs overflow-x-auto"><code>curl -X POST http://localhost:8888/gying/{{ currentHash.slice(0, 16) }}... \
   -H "Content-Type: application/json" \
-  -d '{"action": "set_channels", "channels": ["pd97631607"]}'</code></pre>
+  -d '{"action": "login", "username": "xxx", "password": "xxx"}'</code></pre>
                     </div>
                   </details>
                   
@@ -806,7 +709,7 @@ https://pd.qq.com/g/m250319e25"
                       测试搜索
                     </summary>
                     <div class="mt-2 p-3 bg-muted/50 rounded-lg">
-                      <pre class="text-xs overflow-x-auto"><code>curl -X POST http://localhost:8888/qqpd/{{ currentHash.slice(0, 16) }}... \
+                      <pre class="text-xs overflow-x-auto"><code>curl -X POST http://localhost:8888/gying/{{ currentHash.slice(0, 16) }}... \
   -H "Content-Type: application/json" \
   -d '{"action": "test_search", "keyword": "遮天"}'</code></pre>
                     </div>
@@ -890,7 +793,8 @@ https://pd.qq.com/g/m250319e25"
 </template>
 
 <style scoped>
-.qqpd-manager {
+/* 样式与QQPDManager.vue保持一致 */
+.gying-manager {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 1rem;
@@ -971,33 +875,6 @@ https://pd.qq.com/g/m250319e25"
   background: hsl(var(--primary) / 0.05);
 }
 
-/* 二维码 */
-.qrcode-wrapper {
-  width: 200px;
-  height: 200px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid hsl(var(--border));
-  border-radius: 12px;
-  overflow: hidden;
-  background: hsl(var(--background));
-}
-
-.qrcode-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.qrcode-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
 /* API文档样式 */
 .api-docs-section {
   display: flex;
@@ -1017,12 +894,6 @@ https://pd.qq.com/g/m250319e25"
 
 .api-docs-section[open] .details-icon {
   transform: rotate(180deg);
-}
-
-.api-docs-section > div {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
 }
 
 .api-detail summary {
@@ -1046,32 +917,7 @@ https://pd.qq.com/g/m250319e25"
   font-size: 11px;
 }
 
-/* 频道输入框 */
-.channel-textarea {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: ui-monospace, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  resize: none;
-  transition: all 0.2s ease;
-}
-
-.channel-textarea:focus {
-  outline: none;
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
-}
-
-.channel-textarea::placeholder {
-  color: hsl(var(--muted-foreground));
-}
-
-/* 搜索卡片高度控制 */
+/* 搜索卡片 */
 .search-card {
   height: fit-content;
   max-height: calc(100vh - 300px);
@@ -1162,6 +1008,12 @@ https://pd.qq.com/g/m250319e25"
 }
 
 /* 按钮尺寸优化 */
+.login-button {
+  height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .search-button {
   min-width: 100px;
   padding-left: 24px;
@@ -1169,22 +1021,14 @@ https://pd.qq.com/g/m250319e25"
   font-weight: 600;
 }
 
-.save-channels-button {
-  width: 100%;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  font-weight: 600;
-  font-size: 15px;
-}
-
 /* 响应式 */
 @media (max-width: 1024px) {
-  .qqpd-manager .grid {
+  .gying-manager .grid {
     grid-template-columns: 1fr;
   }
   
-  .qqpd-manager .lg\:col-span-1,
-  .qqpd-manager .lg\:col-span-2 {
+  .gying-manager .lg\:col-span-1,
+  .gying-manager .lg\:col-span-2 {
     grid-column: span 1;
   }
   
@@ -1199,7 +1043,7 @@ https://pd.qq.com/g/m250319e25"
 }
 
 @media (max-width: 768px) {
-  .qqpd-manager {
+  .gying-manager {
     padding: 0 0.5rem;
   }
   
@@ -1207,11 +1051,6 @@ https://pd.qq.com/g/m250319e25"
     left: 12px;
     right: 12px;
     top: 12px;
-  }
-  
-  .qrcode-wrapper {
-    width: 160px;
-    height: 160px;
   }
   
   .search-button {
@@ -1264,3 +1103,4 @@ https://pd.qq.com/g/m250319e25"
   }
 }
 </style>
+

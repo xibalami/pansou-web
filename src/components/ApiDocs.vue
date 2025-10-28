@@ -33,9 +33,12 @@
         @click="activeTab = tab.id"
         class="tab-button"
         :class="{ 'tab-active': activeTab === tab.id }"
+        :title="tab.name"
       >
-        <span class="tab-icon">{{ tab.icon }}</span>
-        {{ tab.name }}
+        <span class="tab-icon">
+          <component :is="tab.icon" :size="20" />
+        </span>
+        <span class="tab-name">{{ tab.name }}</span>
       </button>
     </div>
 
@@ -551,16 +554,20 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import axios from 'axios';
+import SearchIcon from '@/components/icons/SearchIcon.vue';
+import LockIcon from '@/components/icons/LockIcon.vue';
+import HeartbeatIcon from '@/components/icons/HeartbeatIcon.vue';
+import BookIcon from '@/components/icons/BookIcon.vue';
 
 // 当前激活的选项卡
 const activeTab = ref('search');
 
 // 选项卡配置
 const tabs = [
-  { id: 'search', name: '搜索API', icon: '🔍' },
-  { id: 'auth', name: '认证API', icon: '🔐' },
-  { id: 'health', name: '健康检查', icon: '🏥' },
-  { id: 'general', name: '通用说明', icon: '📖' }
+  { id: 'search', name: '搜索API', icon: SearchIcon },
+  { id: 'auth', name: '认证API', icon: LockIcon },
+  { id: 'health', name: '健康检查', icon: HeartbeatIcon },
+  { id: 'general', name: '通用说明', icon: BookIcon }
 ];
 
 // 搜索API参数配置
@@ -1143,11 +1150,28 @@ const copyToClipboard = async (text: string) => {
   gap: 0.5rem;
   margin-bottom: 2rem;
   border-bottom: 1px solid hsl(var(--border));
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.api-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.api-tabs::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.3);
+}
+
+.api-tabs::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
 }
 
 .tab-button {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   padding: 1rem 1.5rem;
   background: none;
@@ -1158,10 +1182,13 @@ const copyToClipboard = async (text: string) => {
   font-weight: 500;
   color: hsl(var(--muted-foreground));
   transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tab-button:hover {
   color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 0.3);
 }
 
 .tab-button.tab-active {
@@ -1171,7 +1198,14 @@ const copyToClipboard = async (text: string) => {
 }
 
 .tab-icon {
-  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tab-name {
+  display: inline;
 }
 
 .api-section {
@@ -1806,6 +1840,25 @@ const copyToClipboard = async (text: string) => {
   
   .docs-title {
     font-size: 2rem;
+  }
+  
+  /* 移动端tab优化：只显示图标 */
+  .tab-button {
+    padding: 0.75rem 1rem;
+    min-width: 56px;
+  }
+  
+  .tab-name {
+    display: none;
+  }
+  
+  .tab-icon {
+    margin: 0;
+  }
+  
+  .api-tabs {
+    gap: 0.25rem;
+    justify-content: flex-start;
   }
   
   .param-header, .param-row {
