@@ -53,6 +53,14 @@ server {
     
     # 设置客户端最大请求体大小
     client_max_body_size 50M;
+    # 压缩
+    gzip on;
+    gzip_buffers 32 4K;
+    gzip_comp_level 9;
+    gzip_min_length 100;
+    gzip_types text/plain application/xml application/json application/javascript text/css text/xml application/x-javascript;
+    gzip_disable "MSIE [1-6]\."; #配置禁用gzip条件，支持正则。此处表示ie6及以下不启用gzip（因为ie低版本不支持）
+    gzip_vary on;
     
     # 日志配置（统一到/app/data/logs/nginx）
     access_log /app/data/logs/nginx/access.log;
