@@ -32,6 +32,7 @@ const updateCount = ref(0);
 const updateTimer = ref<number | null>(null);
 const secondSearchTimeout = ref<number | null>(null);
 const thirdSearchTimeout = ref<number | null>(null);
+const fourthSearchTimeout = ref<number | null>(null);
 const lastSearchParams = ref<SearchParams | null>(null);
 
 // 是否已经执行过搜索
@@ -135,7 +136,24 @@ const handleSearch = async (params: SearchParams) => {
     // 直接使用用户配置的搜索参数（SearchForm已经根据配置设置了正确的src）
     const userParams: SearchParams = { ...params };
     
-    // 先发起第一次搜索请求
+    // 如果同时启用了TG和插件，立即发起后台预热搜索（忽略结果）
+    if (hasChannels && hasPlugins) {
+      const preloadParams: SearchParams = { 
+        ...lastSearchParams.value,
+        src: 'all'  // 后台预热搜索使用 all
+      };
+      
+      // 后台预热搜索，仅用于触发后端插件异步缓存，不处理结果
+      search(preloadParams)
+        .then(() => {
+          console.log('后台预热搜索已触发，用于提前启动插件异步缓存');
+        })
+        .catch(error => {
+          console.warn('后台预热搜索失败（不影响主搜索）:', error);
+        });
+    }
+    
+    // 先发起第一次搜索请求（显示结果）
     search(userParams)
       .then(firstResponse => {
         
@@ -310,16 +328,73 @@ const startThirdAllSearch = (secondSearchCompleteTime: number) => {
       if (response && response.total >= searchResults.total) {
         updateSearchResults(response);
       }
+      
+      // 记录第三次搜索完成时间
+      const thirdSearchCompleteTime = Date.now();
+      
+      // 检查是否需要第四次搜索（只有启用插件时才需要）
+      const config = checkConfig();
+      const hasPlugins = config.plugins.length > 0;
+      
+      if (hasPlugins) {
+        // 开始第四次搜索
+        startFourthAllSearch(thirdSearchCompleteTime);
+      } else {
+        // 没有插件，完成所有搜索
+        stopUpdate();
+      }
     } catch (error) {
       console.error('第三次搜索出错:', error);
-    } finally {
-      // 完成所有搜索，停止更新
       stopUpdate();
     }
   };
   
   // 设置定时器，在适当的时间执行第三次搜索
   thirdSearchTimeout.value = window.setTimeout(executeThirdSearch, delayForThirdSearch);
+};
+
+// 开始第四次搜索
+const startFourthAllSearch = (thirdSearchCompleteTime: number) => {
+  if (!lastSearchParams.value) return;
+  
+  updateCount.value = 3;
+  
+  // 第四次搜索：根据完整配置设置src
+  const src = calculateSrcForFullSearch();
+  const userParams: SearchParams = { 
+    ...lastSearchParams.value,
+    src: src  // 使用完整配置的src
+  };
+  
+  // 计算需要等待的时间，确保与第三次搜索至少间隔3秒
+  const currentTime = Date.now();
+  const timeElapsedSinceThirdSearch = currentTime - thirdSearchCompleteTime;
+  const delayForFourthSearch = Math.max(0, 3000 - timeElapsedSinceThirdSearch);
+  
+  // 执行第四次搜索
+  const executeFourthSearch = async () => {
+    if (!lastSearchParams.value) {
+      stopUpdate();
+      return;
+    }
+    
+    try {
+      const response = await search(userParams);
+      
+      // 更新结果
+      if (response && response.total >= searchResults.total) {
+        updateSearchResults(response);
+      }
+    } catch (error) {
+      console.error('第四次搜索出错:', error);
+    } finally {
+      // 完成所有搜索，停止更新
+      stopUpdate();
+    }
+  };
+  
+  // 设置定时器，在适当的时间执行第四次搜索
+  fourthSearchTimeout.value = window.setTimeout(executeFourthSearch, delayForFourthSearch);
 };
 
 // 停止后台更新
@@ -338,6 +413,11 @@ const stopUpdate = () => {
   if (thirdSearchTimeout.value) {
     clearTimeout(thirdSearchTimeout.value);
     thirdSearchTimeout.value = null;
+  }
+  
+  if (fourthSearchTimeout.value) {
+    clearTimeout(fourthSearchTimeout.value);
+    fourthSearchTimeout.value = null;
   }
   
   // 标记搜索已结束
