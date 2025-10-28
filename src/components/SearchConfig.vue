@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { getHealth, type HealthStatus } from '@/api';
+import { ref, onMounted, computed, watch } from 'vue';
+import { type HealthStatus } from '@/api';
+
+// 接收后端健康状态作为 props
+const props = defineProps<{
+  backendHealth: HealthStatus | null;
+}>();
 
 // 网盘类型配置
 const diskTypes = [
@@ -18,7 +23,7 @@ const diskTypes = [
   { id: 'ed2k', name: '电驴链接', color: '#fa8c16' }
 ];
 
-// 状态数据
+// 状态数据（使用传入的 props）
 const healthData = ref<HealthStatus | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -58,19 +63,24 @@ const stats = computed(() => ({
   diskTypes: selectedDiskTypes.value.length
 }));
 
-// 获取健康状态
-const fetchHealth = async () => {
-  try {
-    loading.value = true;
-    error.value = null;
-    healthData.value = await getHealth();
-  } catch (err) {
+// 初始化健康状态（从 props 获取，不再调用 API）
+const initHealth = () => {
+  loading.value = true;
+  error.value = null;
+  
+  if (props.backendHealth) {
+    healthData.value = props.backendHealth;
+    loading.value = false;
+  } else {
     error.value = '获取状态失败';
-    console.error('获取健康状态失败:', err);
-  } finally {
     loading.value = false;
   }
 };
+
+// 监听 props 变化
+watch(() => props.backendHealth, () => {
+  initHealth();
+}, { immediate: true });
 
 // 加载配置
 const loadConfig = () => {
@@ -244,8 +254,8 @@ const isCustomChannel = (channel: string) => {
 };
 
 // 组件挂载
-onMounted(async () => {
-  await fetchHealth();
+onMounted(() => {
+  initHealth();
   loadConfig();
 });
 </script>
@@ -287,7 +297,7 @@ onMounted(async () => {
       <div class="error-icon">❌</div>
       <h3>加载失败</h3>
       <p>{{ error }}</p>
-      <button @click="fetchHealth" class="retry-btn">重试</button>
+      <button @click="initHealth" class="retry-btn">重试</button>
     </div>
 
     <!-- 配置内容 -->

@@ -1,31 +1,59 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import type { SearchParams } from '@/api';
+import type { HealthStatus } from '@/api';
 import { Button, Input, Icons } from '@/components/ui';
 
 const keyword = ref('');
 const loading = ref(false);
+
+// 接收后端健康状态作为 props
+const props = defineProps<{
+  backendHealth: HealthStatus | null;
+}>();
 
 const emit = defineEmits<{
   (e: 'search', params: SearchParams): void;
   (e: 'searchComplete'): void;
 }>();
 
-// 从配置中加载用户设置
+// 从配置中加载用户设置和后端默认配置
 const loadUserConfig = () => {
   try {
     const savedChannels = localStorage.getItem('pansou_channels');
     const savedPlugins = localStorage.getItem('pansou_plugins');
     const savedDiskTypes = localStorage.getItem('pansou_disk_types');
     
+    // 如果用户已手动设置，使用用户设置
+    if (savedChannels !== null || savedPlugins !== null) {
+      return {
+        channels: savedChannels ? JSON.parse(savedChannels) : [],
+        plugins: savedPlugins ? JSON.parse(savedPlugins) : [],
+        cloudTypes: savedDiskTypes ? JSON.parse(savedDiskTypes) : undefined
+      };
+    }
+    
+    // 如果用户未设置，使用传入的后端配置
+    if (props.backendHealth) {
+      return {
+        channels: props.backendHealth.channels || [],
+        plugins: props.backendHealth.plugins || [],
+        cloudTypes: savedDiskTypes ? JSON.parse(savedDiskTypes) : undefined
+      };
+    }
+    
     return {
-      channels: savedChannels ? JSON.parse(savedChannels) : undefined,
-      plugins: savedPlugins ? JSON.parse(savedPlugins) : undefined,
-      cloudTypes: savedDiskTypes ? JSON.parse(savedDiskTypes) : undefined
+      channels: [],
+      plugins: [],
+      cloudTypes: undefined
     };
   } catch (err) {
-    console.error('加载用户配置失败:', err);
-    return {};
+    console.error('加载配置失败:', err);
+    return {
+      channels: [],
+      plugins: [],
+      cloudTypes: undefined
+    };
   }
 };
 
@@ -36,21 +64,26 @@ const handleSearch = () => {
   
   loading.value = true;
   
-  // 加载用户配置
+  // 加载配置（用户设置或后端默认缓存）
   const userConfig = loadUserConfig();
   
   // 判断有哪些数据源
   const hasChannels = userConfig.channels && userConfig.channels.length > 0;
   const hasPlugins = userConfig.plugins && userConfig.plugins.length > 0;
   
-  // 第一次搜索：优先使用TG（速度快），只有在没有TG时才用plugin
-  let src: 'all' | 'tg' | 'plugin' = 'tg';
-  if (!hasChannels && hasPlugins) {
-    src = 'plugin';  // 只有插件，没有TG频道
-  } else if (!hasChannels && !hasPlugins) {
-    src = 'all';     // 都没有，使用默认配置
+  // 根据搜索逻辑决定第一次搜索的src参数：
+  // 1. 如果同时启用了tg和plugin，第一次只搜索tg
+  // 2. 如果只启用了tg，搜索tg
+  // 3. 如果只启用了plugin，搜索plugin
+  // 4. 如果都没有，使用all（兜底）
+  let src: 'all' | 'tg' | 'plugin' = 'all';
+  if (hasChannels && hasPlugins) {
+    src = 'tg';  // 同时启用，第一次只搜索tg（快速）
+  } else if (hasChannels && !hasPlugins) {
+    src = 'tg';  // 只启用tg
+  } else if (!hasChannels && hasPlugins) {
+    src = 'plugin';  // 只启用plugin
   }
-  // 有TG频道时，始终使用 src=tg（快速返回）
   
   const params: SearchParams = {
     kw: keyword.value,

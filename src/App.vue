@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
-import { search, checkAuthStatus, logout, getHealth, type SearchParams } from '@/api';
+import { search, logout, getHealth, verifyToken, type SearchParams, type HealthStatus } from '@/api';
 import type { SearchResponse, MergedResults } from '@/types';
 import SearchForm from '@/components/SearchForm.vue';
 import ResultTabs from '@/components/ResultTabs.vue';
@@ -9,6 +9,9 @@ import SearchConfig from '@/components/SearchConfig.vue';
 import ApiDocs from '@/components/ApiDocs.vue';
 import LoginDialog from '@/components/LoginDialog.vue';
 import QQPDManager from '@/components/QQPDManager.vue';
+
+// 后端健康状态缓存（应用启动时获取一次）
+const backendHealth = ref<HealthStatus | null>(null);
 
 // 搜索状态
 const loading = ref(false);
@@ -62,6 +65,45 @@ const switchToQQPD = () => {
 
 
 
+// 初始化后端健康状态（应用启动时调用一次）
+const initBackendHealth = async () => {
+  try {
+    backendHealth.value = await getHealth();
+  } catch (err) {
+    console.error('获取后端健康状态失败:', err);
+    backendHealth.value = null;
+  }
+};
+
+// 检查配置（优先使用用户设置，否则使用后端默认缓存）
+const checkConfig = () => {
+  try {
+    const savedChannels = localStorage.getItem('pansou_channels');
+    const savedPlugins = localStorage.getItem('pansou_plugins');
+    
+    // 如果用户已手动设置，使用用户设置
+    if (savedChannels !== null || savedPlugins !== null) {
+      return {
+        channels: savedChannels ? JSON.parse(savedChannels) : [],
+        plugins: savedPlugins ? JSON.parse(savedPlugins) : []
+      };
+    }
+    
+    // 如果用户未设置，使用缓存的后端配置
+    if (backendHealth.value) {
+      return {
+        channels: backendHealth.value.channels || [],
+        plugins: backendHealth.value.plugins || []
+      };
+    }
+    
+    return { channels: [], plugins: [] };
+  } catch (err) {
+    console.error('检查配置失败:', err);
+    return { channels: [], plugins: [] };
+  }
+};
+
 // 处理搜索
 const handleSearch = async (params: SearchParams) => {
   // 停止之前的更新
@@ -84,18 +126,10 @@ const handleSearch = async (params: SearchParams) => {
   
   const startTime = Date.now();
   
-  // 检查是否启用了插件（插件搜索是异步的，需要多次搜索）
-  const hasPlugins = (() => {
-    try {
-      const savedPlugins = localStorage.getItem('pansou_plugins');
-      if (!savedPlugins) return false;
-      const plugins = JSON.parse(savedPlugins);
-      return Array.isArray(plugins) && plugins.length > 0;
-    } catch (err) {
-      console.error('检查插件配置失败:', err);
-      return false;
-    }
-  })();
+  // 检查配置（用户设置或后端默认缓存）
+  const config = checkConfig();
+  const hasChannels = config.channels.length > 0;
+  const hasPlugins = config.plugins.length > 0;
   
   try {
     // 直接使用用户配置的搜索参数（SearchForm已经根据配置设置了正确的src）
@@ -112,16 +146,19 @@ const handleSearch = async (params: SearchParams) => {
           // 第一次搜索完成后，关闭加载状态
           loading.value = false;
           
-          // 只有启用了插件时，才需要第二次、第三次搜索（插件是异步的）
-          // TG搜索是同步的，第一次就返回完整结果
+          // 根据配置决定是否需要后续搜索：
+          // 1. 同时启用tg和plugin：需要第二次、第三次搜索（src=all）
+          // 2. 只启用tg：不需要后续搜索
+          // 3. 只启用plugin：需要第二次、第三次搜索（src=plugin）
           if (hasPlugins) {
+            // 只要启用了插件，就需要后续搜索（插件是异步的）
             // 记录第一次搜索完成时间
             const firstSearchCompleteTime = Date.now();
             
             // 开始第二次搜索
             startSecondAllSearch(firstSearchCompleteTime);
           } else {
-            // 只有TG，不需要后续搜索，标记搜索完成
+            // 只有TG或都没有，不需要后续搜索，标记搜索完成
             isActivelySearching.value = false;
           }
         } else {
@@ -169,22 +206,20 @@ const updateSearchResults = (response: SearchResponse) => {
   }
 };
 
-// 根据用户配置计算正确的src参数
+// 根据配置计算第二次、第三次搜索的src参数
 const calculateSrcForFullSearch = (): 'all' | 'tg' | 'plugin' => {
   try {
-    const savedChannels = localStorage.getItem('pansou_channels');
-    const savedPlugins = localStorage.getItem('pansou_plugins');
-    
-    const hasChannels = savedChannels && JSON.parse(savedChannels).length > 0;
-    const hasPlugins = savedPlugins && JSON.parse(savedPlugins).length > 0;
+    const config = checkConfig();
+    const hasChannels = config.channels.length > 0;
+    const hasPlugins = config.plugins.length > 0;
     
     // 根据完整配置决定src
-    if (!hasChannels && hasPlugins) {
+    if (hasChannels && hasPlugins) {
+      return 'all';     // 都有，使用all（第一次已用tg，现在搜索全部）
+    } else if (!hasChannels && hasPlugins) {
       return 'plugin';  // 只有插件
     } else if (hasChannels && !hasPlugins) {
-      return 'tg';      // 只有TG频道
-    } else if (hasChannels && hasPlugins) {
-      return 'all';     // 都有
+      return 'tg';      // 只有TG频道（理论上不应该走到这里，因为只有TG时不会有后续搜索）
     }
     return 'all';       // 默认
   } catch (err) {
@@ -201,10 +236,11 @@ const startSecondAllSearch = (firstSearchCompleteTime: number) => {
   isActivelySearching.value = true;
   updateCount.value = 1;
   
-  // 第二次搜索：根据用户完整配置设置src
+  // 第二次搜索：根据完整配置设置src
+  const src = calculateSrcForFullSearch();
   const userParams: SearchParams = { 
     ...lastSearchParams.value,
-    src: calculateSrcForFullSearch()  // 使用完整配置的src
+    src: src  // 使用完整配置的src
   };
   
   // 计算需要等待的时间，确保与第一次搜索至少间隔2秒
@@ -248,10 +284,11 @@ const startThirdAllSearch = (secondSearchCompleteTime: number) => {
   
   updateCount.value = 2;
   
-  // 第三次搜索：根据用户完整配置设置src
+  // 第三次搜索：根据完整配置设置src
+  const src = calculateSrcForFullSearch();
   const userParams: SearchParams = { 
     ...lastSearchParams.value,
-    src: calculateSrcForFullSearch()  // 使用完整配置的src
+    src: src  // 使用完整配置的src
   };
   
   // 计算需要等待的时间，确保与第二次搜索至少间隔3秒
@@ -327,15 +364,41 @@ const resetToInitial = () => {
   updateCount.value = 0;
 };
 
-// 检查认证状态
+// 检查认证状态（使用缓存的健康状态，避免重复调用API）
 const checkAuth = async () => {
-  const status = await checkAuthStatus();
-  if (status.enabled && !status.authenticated) {
+  try {
+    // 使用缓存的健康状态，避免重复调用 /health
+    const authEnabled = backendHealth.value?.auth_enabled || false;
+    const token = localStorage.getItem('auth_token');
+    
+    if (!authEnabled) {
+      // 认证未启用，不显示任何登录相关信息
+      isAuthenticated.value = false;
+      showLogin.value = false;
+      return;
+    }
+    
+    if (!token) {
+      // 需要认证但没有token
+      showLogin.value = true;
+      isAuthenticated.value = false;
+      return;
+    }
+    
+    // 验证token是否有效
+    const valid = await verifyToken();
+    if (valid) {
+      isAuthenticated.value = true;
+      currentUsername.value = localStorage.getItem('auth_username') || '';
+    } else {
+      showLogin.value = true;
+      isAuthenticated.value = false;
+    }
+  } catch (error) {
+    console.error('检查认证状态失败:', error);
+    // 出错时默认显示登录窗口
     showLogin.value = true;
     isAuthenticated.value = false;
-  } else if (status.enabled && status.authenticated) {
-    isAuthenticated.value = true;
-    currentUsername.value = localStorage.getItem('auth_username') || '';
   }
 };
 
@@ -358,11 +421,10 @@ const handleLogout = async () => {
 };
 
 // 检查QQPD插件是否显示（后端支持时默认显示，除非用户主动禁用）
-const checkQQPDPlugin = async () => {
+const checkQQPDPlugin = () => {
   try {
-    // 1. 检查后端是否支持QQPD
-    const health = await getHealth();
-    const backendSupportsQQPD = health.plugins?.includes('qqpd') || false;
+    // 1. 检查后端是否支持QQPD（使用缓存的健康状态）
+    const backendSupportsQQPD = backendHealth.value?.plugins?.includes('qqpd') || false;
     
     // 2. 如果后端不支持，直接隐藏
     if (!backendSupportsQQPD) {
@@ -388,7 +450,7 @@ const checkQQPDPlugin = async () => {
       isQQPDEnabled.value = true;
     }
   } catch (error) {
-    console.error('获取插件状态失败:', error);
+    console.error('检查QQPD插件失败:', error);
     isQQPDEnabled.value = false;
   }
 };
@@ -407,9 +469,15 @@ const handleConfigSaved = () => {
 };
 
 // 组件加载时初始化
-onMounted(() => {
+onMounted(async () => {
+  // 首先初始化后端健康状态（只调用一次）
+  await initBackendHealth();
+  
+  // 然后初始化其他状态
   checkAuth();
   checkQQPDPlugin();
+  
+  // 监听事件
   window.addEventListener('auth:required', handleAuthRequired);
   window.addEventListener('storage', handleStorageChange);
   window.addEventListener('config:saved', handleConfigSaved);
@@ -531,6 +599,7 @@ onUnmounted(() => {
         <!-- 搜索表单 -->
         <div class="mb-6">
           <SearchForm 
+            :backend-health="backendHealth"
             @search="handleSearch" 
             @search-complete="handleSearchComplete"
           />
@@ -572,7 +641,7 @@ onUnmounted(() => {
       
       <!-- 配置页面 -->
       <div v-else-if="currentPage === 'status'" class="status-page">
-        <SearchConfig />
+        <SearchConfig :backend-health="backendHealth" />
       </div>
       
       <!-- API文档页面 -->
