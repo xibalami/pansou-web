@@ -237,6 +237,46 @@ const handleSearchComplete = () => {
   // 只处理UI相关的状态，不影响搜索流程
 };
 
+// 应用关键词过滤
+const applyKeywordFilter = (results: any, filterKeywords: string, filterMode: 'include' | 'exclude') => {
+  if (!results || !filterKeywords.trim()) return results;
+  
+  // 将过滤关键词分割成数组（支持空格和逗号分隔）
+  const keywords = filterKeywords.split(/[,\s]+/).filter(k => k.trim()).map(k => k.toLowerCase());
+  if (keywords.length === 0) return results;
+  
+  const filteredResults: any = {};
+  
+  // 遍历每个网盘类型的结果
+  Object.keys(results).forEach(diskType => {
+    const diskResults = results[diskType];
+    if (!Array.isArray(diskResults)) return;
+    
+    // 过滤每个结果项
+    const filtered = diskResults.filter((item: any) => {
+      // merged_by_type 中的数据结构使用 note 字段，而不是 title
+      const note = (item.note || '').toLowerCase();
+      const source = (item.source || '').toLowerCase();
+      const searchText = `${note} ${source}`;
+      
+      if (filterMode === 'include') {
+        // 包含模式：至少包含一个关键词
+        return keywords.some(keyword => searchText.includes(keyword));
+      } else {
+        // 排除模式：不包含任何一个关键词
+        return !keywords.some(keyword => searchText.includes(keyword));
+      }
+    });
+    
+    // 只保留有结果的网盘类型
+    if (filtered.length > 0) {
+      filteredResults[diskType] = filtered;
+    }
+  });
+  
+  return filteredResults;
+};
+
 // 更新搜索结果
 const updateSearchResults = (response: SearchResponse) => {
   if (!response) return;
@@ -244,7 +284,28 @@ const updateSearchResults = (response: SearchResponse) => {
   searchResults.total = response.total || 0;
   
   if (response.merged_by_type) {
-    searchResults.mergedResults = { ...response.merged_by_type };
+    let results = { ...response.merged_by_type };
+    
+    // 应用过滤（如果有过滤参数）
+    if (lastSearchParams.value) {
+      const filterKeywords = (lastSearchParams.value as any).filter_keywords;
+      const filterMode = (lastSearchParams.value as any).filter_mode || 'include';
+      
+      if (filterKeywords) {
+        results = applyKeywordFilter(results, filterKeywords, filterMode);
+        
+        // 重新计算总数
+        let filteredTotal = 0;
+        Object.values(results).forEach((diskResults: any) => {
+          if (Array.isArray(diskResults)) {
+            filteredTotal += diskResults.length;
+          }
+        });
+        searchResults.total = filteredTotal;
+      }
+    }
+    
+    searchResults.mergedResults = results;
   } else {
     console.warn('搜索结果中没有merged_by_type字段');
     searchResults.mergedResults = {};
@@ -452,7 +513,12 @@ const stopUpdate = () => {
   isActivelySearching.value = false;
 };
 
-// 重置到初始页面
+// 切换到搜索页面（保持搜索结果）
+const switchToSearch = () => {
+  currentPage.value = 'search';
+};
+
+// 重置到初始页面（清空搜索结果，仅在必要时使用）
 const resetToInitial = () => {
   // 停止之前的更新
   stopUpdate();
@@ -651,7 +717,7 @@ onUnmounted(() => {
     <!-- 导航栏 -->
     <nav class="nav-header backdrop-blur-md bg-background/80 border-b border-border">
       <div class="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div class="flex items-center gap-3 cursor-pointer" @click="resetToInitial">
+        <div class="flex items-center gap-3 cursor-pointer" @click="switchToSearch">
           <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <svg class="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
@@ -664,6 +730,19 @@ onUnmounted(() => {
         
         <!-- 导航菜单 -->
         <nav class="flex items-center gap-2">
+          <button 
+            @click="switchToSearch"
+            class="nav-button"
+            :class="{ 'active': currentPage === 'search' }"
+            title="搜索"
+          >
+            <span class="nav-icon">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </span>
+            <span class="nav-text">搜索</span>
+          </button>
           <button 
             @click="switchToStatus"
             class="nav-button"
