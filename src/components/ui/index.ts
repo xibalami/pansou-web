@@ -93,4 +93,14 @@ export const Icons = {
       </svg>
     `
   }),
+  
+  Refresh: (): Component => ({
+    template: `
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.93 19.07a10 10 0 1 1 2.83 2.11"/>
+      <polyline points="23 4 23 10 17 10"/>
+    </svg>
+    `
+  }),
 };

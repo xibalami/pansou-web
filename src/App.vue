@@ -42,6 +42,9 @@ const hasSearched = ref(false);
 // 是否正在进行后台搜索（包括初始搜索和后续更新）
 const isActivelySearching = ref(false);
 
+// 强制刷新逻辑
+let forceRefreshPending = false;
+
 // 当前页面状态
 const currentPage = ref<'search' | 'status' | 'docs' | 'accounts' | 'qqpd' | 'gying'>('search');
 
@@ -136,32 +139,37 @@ const checkConfig = () => {
 const handleSearch = async (params: SearchParams) => {
   // 停止之前的更新
   stopUpdate();
-  
-  // 标记已执行搜索和正在搜索
+
+  // 先保存用户输入的原始参数，不带 refresh
+  lastSearchParams.value = { ...params };
+
+  // 强制刷新: 只影响本次请求参数
+  let innerParams = { ...params };
+  if (forceRefreshPending) {
+    innerParams.refresh = true;
+    forceRefreshPending = false;
+  }
+
+  // 标记状态
   hasSearched.value = true;
   isActivelySearching.value = true;
-  
-  // 重置状态
   loading.value = true;
-  
+
   // 清空之前的搜索结果
   searchResults.total = 0;
   searchResults.mergedResults = {};
   searchTime.value = undefined;
-  
-  // 保存搜索参数
-  lastSearchParams.value = { ...params };
-  
+
   const startTime = Date.now();
-  
-  // 检查配置（用户设置或后端默认缓存）
+
+  // 配置
   const config = checkConfig();
   const hasChannels = config.channels.length > 0;
   const hasPlugins = config.plugins.length > 0;
-  
+
   try {
-    // 直接使用用户配置的搜索参数（SearchForm已经根据配置设置了正确的src）
-    const userParams: SearchParams = { ...params };
+    // 只用 innerParams，确保 refresh 只传一次
+    const userParams: SearchParams = { ...innerParams };
     
     // 如果同时启用了TG和插件，立即发起后台预热搜索（忽略结果）
     if (hasChannels && hasPlugins) {
@@ -678,6 +686,16 @@ const handleConfigSaved = () => {
   checkGyingPlugin();
 };
 
+// 强制刷新处理
+const handleForceRefresh = () => {
+  if (loading.value) return;
+  forceRefreshPending = true;
+  // 复用handleSearch最近一次参数
+  if (lastSearchParams.value) {
+    handleSearch({ ...lastSearchParams.value });
+  }
+};
+
 // 组件加载时初始化
 onMounted(async () => {
   // 首先初始化后端健康状态（只调用一次）
@@ -827,6 +845,7 @@ onUnmounted(() => {
             :searchTime="searchTime"
             :isUpdating="isUpdating"
             :updateCount="updateCount"
+            @force-refresh="handleForceRefresh"
           />
         </div>
         
@@ -887,6 +906,7 @@ onUnmounted(() => {
         <div class="flex items-center justify-center gap-4 text-sm text-muted-foreground">
           <span>© {{ new Date().getFullYear() }}-{{ new Date().getFullYear() + 10 }}</span>
           <a href="https://dm.xueximeng.com/" target="_blank" rel="noopener noreferrer" class="hover:text-foreground transition-colors">美漫资源共建</a>
+          <a href="/report.html" target="_blank" rel="noopener noreferrer" class="hover:text-foreground transition-colors">实时监控</a>
           <a href="https://github.com/fish2018" target="_blank" rel="noopener noreferrer" class="hover:text-foreground transition-colors">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
