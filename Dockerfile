@@ -22,7 +22,7 @@ ENV CHANNELS=tgsearchers3,Aliyun_4K_Movies,bdbdndn11,yunpanx,bsbdbfjfjff,yp123pa
 
 # 默认性能配置
 ENV CACHE_ENABLED=true
-ENV CACHE_TTL=3600
+ENV CACHE_TTL=60
 ENV MAX_CONCURRENCY=200
 ENV MAX_PAGES=30
 

@@ -30,7 +30,7 @@ services:
       
       # 性能配置（镜像已包含默认值，如需调整可取消注释）
       # - CACHE_ENABLED=true
-      # - CACHE_TTL=3600
+      # - CACHE_TTL=60
       # - MAX_CONCURRENCY=200
       # - MAX_PAGES=30
       
