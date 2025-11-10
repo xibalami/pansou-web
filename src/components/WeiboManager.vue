@@ -37,6 +37,7 @@ const loadSavedUsers = () => {
 
 const saveSavedUsers = () => {
   localStorage.setItem('weibo_users', JSON.stringify(savedUsers.value))
+  window.dispatchEvent(new StorageEvent('storage', { key: 'weibo_users' }))
 }
 
 const addUserToList = (uid: string, hash: string) => {
@@ -289,10 +290,10 @@ const handleSaveUserIds = async () => {
     const response = await weiboApi.setUserIds(currentHash.value, userIds)
     
     if (response.success) {
-      const count = response.data.user_id_count
+      const count = response.data.user_ids?.length || response.data.user_id_count || 0
       const invalidCount = response.data.invalid_user_ids?.length || 0
       
-      let msg = `已保存 ${count} 个用户ID`
+      let msg = `✓已保存 ${count} 个用户ID`
       if (invalidCount > 0) {
         msg += `，${invalidCount} 个无效`
       }
@@ -622,7 +623,7 @@ const copyHashToClipboard = async () => {
                 <h3 class="text-lg font-semibold flex items-center gap-2">
                   <span>👤</span>
                   <span>用户ID管理</span>
-                  <span class="text-sm text-muted-foreground font-normal">({{ status.user_id_count }} 个)</span>
+                  <span class="text-sm text-muted-foreground font-normal">({{ status.user_ids?.length || 0 }} 个)</span>
                 </h3>
               </div>
               
