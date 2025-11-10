@@ -82,6 +82,11 @@ const handleAddUID = async () => {
       last_login: new Date().toISOString()
     }
     
+    addUserToList(
+      uid.value.trim(),
+      hash
+    )
+    
     currentHash.value = hash
     currentView.value = 'manage'
     
