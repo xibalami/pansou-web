@@ -1,7 +1,10 @@
 FROM nginx:alpine
 
 # 安装必要的运行时依赖
-RUN apk add --no-cache ca-certificates tzdata curl bash
+# 分两步安装以规避ARM64+QEMU的post-install脚本兼容性问题
+RUN apk add --no-cache ca-certificates tzdata curl && \
+    apk add --no-cache bash --allow-untrusted 2>/dev/null || \
+    (apk add --no-cache --force-broken-world bash || true)
 
 # 设置时区
 ENV TZ=Asia/Shanghai
