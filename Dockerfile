@@ -1,7 +1,8 @@
 FROM nginx:alpine
 
-# 安装必要的运行时依赖
-RUN apk add --no-cache ca-certificates tzdata curl bash
+# 安装必要的运行时依赖(分步安装避免QEMU兼容性问题)
+RUN apk add --no-cache ca-certificates tzdata curl
+RUN apk add --no-cache bash || apk add --no-cache --force-overwrite bash
 
 # 设置时区
 ENV TZ=Asia/Shanghai
