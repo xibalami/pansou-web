@@ -47,6 +47,9 @@ const alertMessage = ref('')
 const alertType = ref<'success' | 'error'>('success')
 
 const isLoggedIn = computed(() => status.value.logged_in && status.value.status === 'active')
+const totalSearchLinks = computed(() =>
+  searchResults.value.reduce((sum, result) => sum + (result.links?.length || 0), 0)
+)
 
 const loadSavedUsers = () => {
   const stored = localStorage.getItem('panlian_users')
@@ -611,44 +614,79 @@ onMounted(() => {
 
                 <div v-if="searchResults.length > 0" class="search-results-container flex-1">
                   <div class="text-sm text-muted-foreground mb-3">
-                    找到 <strong class="text-foreground">{{ searchResults.length }}</strong> 条结果
+                    找到 <strong class="text-foreground">{{ searchResults.length }}</strong> 个影视条目，
+                    共 <strong class="text-foreground">{{ totalSearchLinks }}</strong> 个链接
                   </div>
 
                   <div class="search-results-list">
-                    <div
-                      v-for="(result, index) in searchResults"
-                      :key="result.title + index"
+                    <div 
+                      v-for="(result, index) in searchResults" 
+                      :key="result.unique_id"
                       class="result-item"
                     >
-                      <div class="font-medium text-sm mb-2">
-                        {{ index + 1 }}. {{ result.title }}
+                      <div class="result-head">
+                        <div class="result-title">
+                          <span class="result-index">{{ index + 1 }}</span>
+                          <span>{{ result.title }}</span>
+                        </div>
+                        <span v-if="result.datetime" class="result-time">
+                          {{ formatDateTime(result.datetime) }}
+                        </span>
                       </div>
-                      <div class="text-xs text-muted-foreground mb-2">
-                        时间: {{ formatDateTime(result.datetime) }}
-                      </div>
-                      <div class="text-xs text-muted-foreground mb-2">
-                        链接数: {{ result.link_count }}
-                      </div>
-                      <div v-if="result.tags?.length" class="flex flex-wrap gap-2 mb-2">
+
+                      <div class="result-meta">
+                        <span class="meta-chip meta-chip-primary">
+                          {{ result.link_count }} 个链接
+                        </span>
                         <span
-                          v-for="tag in result.tags"
-                          :key="tag"
-                          class="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary"
+                          v-for="tag in result.tags || []"
+                          :key="`${result.unique_id}-${tag}`"
+                          class="meta-chip"
                         >
                           {{ tag }}
                         </span>
                       </div>
-                      <a
-                        v-if="result.first_link"
-                        :href="result.first_link"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="link-url"
-                      >
-                        {{ result.first_link }}
-                      </a>
+
+                      <div class="link-list">
+                        <div 
+                          v-for="(link, linkIndex) in result.links" 
+                          :key="`${result.unique_id}-${link.url}-${linkIndex}`"
+                          class="link-item"
+                        >
+                          <div class="link-main">
+                            <span class="link-type">{{ link.type }}</span>
+                            <a
+                              :href="link.url"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="link-url"
+                            >
+                              {{ link.url }}
+                            </a>
+                          </div>
+
+                          <div
+                            v-if="link.password || link.work_title || link.datetime"
+                            class="link-extra"
+                          >
+                            <span
+                              v-if="link.work_title && link.work_title !== result.title"
+                              class="link-work-title"
+                            >
+                              {{ link.work_title }}
+                            </span>
+                            <span v-if="link.password" class="link-password">
+                              提取码 {{ link.password }}
+                            </span>
+                            <span v-if="link.datetime" class="link-datetime">
+                              {{ formatDateTime(link.datetime) }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
+
                 </div>
               </div>
             </div>
@@ -733,24 +771,185 @@ onMounted(() => {
   gap: 12px;
   max-height: 520px;
   overflow-y: auto;
+  padding-right: 4px;
+}
+
+.search-results-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.search-results-list::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.35);
+  border-radius: 999px;
+}
+
+.search-results-list::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 999px;
+}
+
+.search-results-list::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
 }
 
 .result-item {
-  padding: 14px;
-  border-radius: 12px;
+  padding: 16px;
+  border-radius: 14px;
   border: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.2);
+  background: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted) / 0.28) 100%);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.result-item:hover {
+  border-color: hsl(var(--primary) / 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px hsl(var(--foreground) / 0.06);
+}
+
+.result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.result-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.result-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.result-time {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1;
+}
+
+.meta-chip-primary {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border) / 0.8);
+  border-radius: 10px;
+}
+
+.link-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .link-url {
-  display: inline-flex;
+  flex: 1;
   color: hsl(var(--primary));
   word-break: break-all;
   text-decoration: none;
+  line-height: 1.5;
 }
 
 .link-url:hover {
   text-decoration: underline;
+}
+
+.link-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.link-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 68px;
+}
+
+.link-password,
+.link-work-title,
+.link-datetime {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.link-password {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.link-work-title {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.link-datetime {
+  background: hsl(var(--muted) / 0.65);
+  color: hsl(var(--muted-foreground));
 }
 
 .api-docs-section[open] .details-icon {
@@ -766,5 +965,20 @@ onMounted(() => {
 .slide-fade-leave-to {
   opacity: 0;
   transform: translateY(-10px);
+}
+
+@media (max-width: 768px) {
+  .result-head {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .link-main {
+    flex-direction: column;
+  }
+
+  .link-extra {
+    padding-left: 0;
+  }
 }
 </style>

@@ -35,17 +35,32 @@ export interface PanlianLogoutResponse extends PanlianBaseResponse {
   }
 }
 
+export interface PanlianSearchLink {
+  type: string
+  url: string
+  password: string
+  datetime?: string
+  work_title?: string
+}
+
 export interface PanlianSearchResult {
+  message_id: string
+  unique_id: string
+  channel: string
   title: string
+  content: string
   datetime: string
   link_count: number
-  first_link: string
+  links: PanlianSearchLink[]
   tags?: string[]
+  images?: string[]
 }
 
 export interface PanlianSearchResponse extends PanlianBaseResponse {
   data: {
     keyword: string
+    total_results: number
+    total_links: number
     results: PanlianSearchResult[]
   }
 }
