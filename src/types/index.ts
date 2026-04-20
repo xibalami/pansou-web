@@ -73,6 +73,64 @@ export interface FilterConfig {
   exclude?: string[];
 }
 
+// 搜索结果导出格式
+export type ExportFormat = 'json' | 'txt';
+
+// 搜索结果导出字段
+export type ExportField = 'sequence' | 'title' | 'source' | 'datetime';
+
+// 搜索结果导出设置
+export interface ExportSettings {
+  format: ExportFormat;
+  fields: ExportField[];
+  prettyJson: boolean;
+  includeFieldLabels: boolean;
+  selectedDiskTypes: string[];
+  allDiskTypesSelected: boolean;
+}
+
+export interface DetectionSettings {
+  enabled: boolean;
+}
+
+export type LinkHealthState =
+  | 'idle'
+  | 'pending'
+  | 'ok'
+  | 'bad'
+  | 'locked'
+  | 'unsupported'
+  | 'uncertain';
+
+export interface LinkHealthRecord {
+  state: LinkHealthState;
+  summary?: string;
+  checked_at: number;
+  expires_at: number;
+  normalized_url?: string;
+}
+
+export interface LinkCheckItem {
+  disk_type: string;
+  url: string;
+  password?: string;
+}
+
+export interface LinkCheckResult {
+  disk_type: string;
+  url: string;
+  normalized_url?: string;
+  state: LinkHealthState;
+  summary?: string;
+  cache_hit: boolean;
+  checked_at: number;
+  expires_at: number;
+}
+
+export interface LinkCheckResponse {
+  results: LinkCheckResult[];
+}
+
 // 导出QQPD相关类型
 export * from './qqpd' 
 export * from './gying'
