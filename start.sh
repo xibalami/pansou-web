@@ -7,7 +7,7 @@ export PANSOU_HOST=${PANSOU_HOST:-127.0.0.1}
 export DOMAIN=${DOMAIN:-localhost}
 export CACHE_PATH=${CACHE_PATH:-/app/data/cache}
 export LOG_PATH=${LOG_PATH:-/app/data/logs}
-
+FRONT_PORT="${PORT:-80}"
 # 健康检查配置
 export HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-30}
 export HEALTH_CHECK_TIMEOUT=${HEALTH_CHECK_TIMEOUT:-10}
@@ -48,7 +48,8 @@ fi
 cat > /etc/nginx/conf.d/default.conf << EOF
 # HTTP服务器
 server {
-    listen 80;
+    #listen 80;
+    listen ${FRONT_PORT};
     server_name ${DOMAIN};
     
     # 设置客户端最大请求体大小
@@ -218,6 +219,11 @@ start_backend() {
     cd /app
     
     # 将后端日志输出到统一的日志目录
+    #./pansou > /app/data/logs/backend/pansou.log 2>&1 &
+    env -u PORT \
+    PANSOU_HOST="${PANSOU_HOST}" \
+    PANSOU_PORT="${PANSOU_PORT}" \
+    DOMAIN="${DOMAIN}" \
     ./pansou > /app/data/logs/backend/pansou.log 2>&1 &
     BACKEND_PID=$!
     
